@@ -1,12 +1,12 @@
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/features/auth/data/models/auth_controller.dart';
 import 'package:edtech/features/auth/providers/sign_in_provider.dart';
-import 'package:edtech/features/mentor/providers/mentor_profile_provider.dart';
+import 'package:edtech/features/profile/mentor/providers/mentor_profile_provider.dart';
 import 'package:edtech/features/profile/student/data/entities/user_profile_entity.dart';
-import 'package:edtech/features/student/providers/student_profile_provider.dart';
+import 'package:edtech/features/profile/student/providers/student_profile_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:edtech/global/core/constants/images/images.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/app/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
@@ -229,7 +229,7 @@ class _HubHeader extends StatelessWidget {
                   name,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontSize: 20,
-                    color: isDark ? Colors.white : TextColor.primaryTextColor,
+                    color: isDark ? Colors.white : AppColors.primaryText,
                   ),
                 ),
               ],
@@ -374,7 +374,7 @@ class _MenuRowTile extends StatelessWidget {
                   label,
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDark ? Colors.white : TextColor.primaryTextColor,
+                    color: isDark ? Colors.white : AppColors.primaryText,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -426,7 +426,7 @@ class _MenuRowTile extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 14,
-                  color: isDark ? Colors.white : TextColor.primaryTextColor,
+                  color: isDark ? Colors.white : AppColors.primaryText,
                 ),
               ),
             ),
@@ -529,7 +529,7 @@ class _ToggleRowTileState extends State<_ToggleRowTile> {
                 widget.label,
                 style: TextStyle(
                   fontSize: 14,
-                  color: widget.isDark ? Colors.white : TextColor.primaryTextColor,
+                  color: widget.isDark ? Colors.white : AppColors.primaryText,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -538,8 +538,8 @@ class _ToggleRowTileState extends State<_ToggleRowTile> {
               scale: 0.85,
               child: Switch.adaptive(
                 value: _effectiveValue,
-                activeColor: TextColor.appColor,
-                activeTrackColor: TextColor.appColor.withValues(alpha: 0.2),
+                activeColor: AppColors.themeColor,
+                activeTrackColor: AppColors.themeColor.withValues(alpha: 0.2),
                 onChanged: (value) {
                   widget.onChanged?.call(value);
                   if (widget.onChanged == null) {
@@ -576,7 +576,7 @@ class _ToggleRowTileState extends State<_ToggleRowTile> {
               widget.label,
               style: TextStyle(
                 fontSize: 14,
-                color: widget.isDark ? Colors.white : TextColor.primaryTextColor,
+                color: widget.isDark ? Colors.white : AppColors.primaryText,
               ),
             ),
           ),
@@ -584,8 +584,8 @@ class _ToggleRowTileState extends State<_ToggleRowTile> {
             scale: 0.85,
             child: Switch.adaptive(
               value: _effectiveValue,
-              activeColor: TextColor.appColor,
-              activeTrackColor: TextColor.appColor.withValues(alpha: 0.2),
+              activeColor: AppColors.themeColor,
+              activeTrackColor: AppColors.themeColor.withValues(alpha: 0.2),
               onChanged: (value) {
                 widget.onChanged?.call(value);
                 if (widget.onChanged == null) {

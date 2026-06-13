@@ -3,14 +3,14 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/features/profile/student/data/entities/user_profile_entity.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
-import 'package:edtech/features/avatar/providers/avatar_upload_provider.dart';
+import 'package:edtech/features/profile/avatar/providers/avatar_upload_provider.dart';
 import '../../../avatar/presentation/widgets/avatar_options_bottom_sheet.dart';
 import '../../../avatar/presentation/widgets/custom_crop_screen.dart';
 import 'package:edtech/features/profile/avatar/presentation/screens/full_screen_image_viewer_screen.dart';
-import 'package:edtech/features/student/providers/student_profile_provider.dart';
+import 'package:edtech/features/profile/student/providers/student_profile_provider.dart';
 import '../widgets/completed_courses_list.dart';
 import '../widgets/profile_app_bar.dart';
 import '../widgets/profile_header_card.dart';
@@ -115,7 +115,7 @@ class _ProfileBody extends StatelessWidget {
     return Scaffold(
       appBar: const ProfileAppBar(),
       body: RefreshIndicator(
-        color: TextColor.appColor,
+        color: AppColors.themeColor,
         onRefresh: () => context.read<StudentProfileProvider>().fetchProfile(),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

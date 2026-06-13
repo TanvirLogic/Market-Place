@@ -1,6 +1,6 @@
 import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -184,7 +184,7 @@ class _CourseProgressCard extends StatelessWidget {
                     height: 12,
                     child: Stack(
                       children: [
-                        Container(color: isDark ? TextColor.appColor : Colors.grey),
+                        Container(color: isDark ? AppColors.themeColor : Colors.grey),
                         FractionallySizedBox(
                           alignment: Alignment.centerLeft,
                           widthFactor: 0.35,
@@ -246,7 +246,7 @@ class _EnrolledTabContentViewState extends State<_EnrolledTabContentView> {
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
-                        color: isSelected ? TextColor.appColor : const Color(0xFFEFEFF0),
+                        color: isSelected ? AppColors.themeColor : const Color(0xFFEFEFF0),
                         width: isSelected ? 2.5 : 1.0,
                       ),
                     ),
@@ -254,7 +254,7 @@ class _EnrolledTabContentViewState extends State<_EnrolledTabContentView> {
                   child: Text(
                     _tabs[index],
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isSelected ? TextColor.appColor : (isDark ? Colors.white.withValues(alpha: 0.6) : TextColor.primaryTextColor),
+                      color: isSelected ? AppColors.themeColor : (isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.primaryText),
                       fontSize: 15,
                     ),
                   ),

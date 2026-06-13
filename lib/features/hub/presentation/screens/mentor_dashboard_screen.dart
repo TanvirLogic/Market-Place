@@ -1,5 +1,5 @@
 import 'package:edtech/global/core/constants/sizes.dart';
-import 'package:edtech/features/mentor/providers/mentor_profile_provider.dart';
+import 'package:edtech/features/profile/mentor/providers/mentor_profile_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';

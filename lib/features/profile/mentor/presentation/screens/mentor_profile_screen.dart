@@ -12,14 +12,14 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:edtech/features/avatar/providers/avatar_upload_provider.dart';
-import 'package:edtech/features/avatar/providers/cover_upload_provider.dart';
+import 'package:edtech/features/profile/avatar/providers/avatar_upload_provider.dart';
+import 'package:edtech/features/profile/avatar/providers/cover_upload_provider.dart';
 import '../../../student/presentation/widgets/completed_courses_list.dart';
 import '../../../student/presentation/widgets/section_header.dart';
 import '../../../student/presentation/widgets/skill_badges_row.dart';
 import '../../../student/presentation/widgets/social_links_row.dart';
 import '../../../student/presentation/widgets/video_list_section.dart';
-import 'package:edtech/features/mentor/providers/mentor_profile_provider.dart';
+import 'package:edtech/features/profile/mentor/providers/mentor_profile_provider.dart';
 import 'package:edtech/features/profile/student/data/entities/user_profile_entity.dart';
 
 /// Mentor profile page rendered from the provider's [UserProfileEntity].

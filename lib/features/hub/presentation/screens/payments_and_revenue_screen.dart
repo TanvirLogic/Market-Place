@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 
 class PaymentsAndRevenueScreen extends StatelessWidget {
@@ -82,7 +82,7 @@ class PaymentsAndRevenueScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: TextColor.appColor,
+                      color: AppColors.themeColor,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -106,8 +106,8 @@ class PaymentsAndRevenueScreen extends StatelessWidget {
                 status: 'Completed',
                 isPositive: true,
                 iconPath: 'assets/images/revenue_icons/book_icon.svg',
-                iconBg: TextColor.appColor.withValues(alpha: 0.1),
-                iconColor: TextColor.appColor,
+                iconBg: AppColors.themeColor.withValues(alpha: 0.1),
+                iconColor: AppColors.themeColor,
               ),
               const SizedBox(height: 12),
               _TransactionCard(
@@ -263,12 +263,12 @@ class _FilterPillRowState extends State<_FilterPillRow> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? TextColor.appColor
+                    ? AppColors.themeColor
                     : cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isSelected
-                      ? TextColor.appColor
+                      ? AppColors.themeColor
                       : const Color(0xFFEFEFF0),
                 ),
               ),

@@ -1,4 +1,4 @@
-import 'package:edtech/app/asset_paths.dart';
+import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/features/auth/data/models/auth_controller.dart';
 import 'package:flutter/material.dart';
@@ -44,7 +44,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(AssetPaths.eduverseP, width: 200, height: 200, fit: BoxFit.contain, filterQuality: FilterQuality.high),
+            Image.asset(Images.eduverseP, width: 200, height: 200, fit: BoxFit.contain, filterQuality: FilterQuality.high),
             const SizedBox(height: 24),
           ],
         ),

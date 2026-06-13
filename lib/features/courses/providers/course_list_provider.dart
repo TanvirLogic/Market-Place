@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:edtech/app/setup_network_caller.dart';
-import 'package:edtech/app/urls.dart';
 
 class CourseListProvider extends ChangeNotifier {
   bool _isLoading = false;
@@ -17,16 +15,9 @@ class CourseListProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    final response = await getNetworkCaller().getRequest(
-      url: Urls.courseDetailsUrl(''),
-    );
+    await Future.delayed(const Duration(milliseconds: 500));
 
-    if (response.isSuccess) {
-      _courses = response.responseData['data'] as List<dynamic>? ?? [];
-    } else {
-      _errorMessage = response.errorMessage;
-    }
-
+    _courses = [];
     _isLoading = false;
     notifyListeners();
   }

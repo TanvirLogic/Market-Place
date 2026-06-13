@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../../global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 
 class BalanceBanner extends StatelessWidget {
   final String balance;
@@ -11,7 +11,7 @@ class BalanceBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
       decoration: BoxDecoration(
-        color: TextColor.appColor,
+        color: AppColors.themeColor,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
@@ -47,7 +47,7 @@ class BalanceBanner extends StatelessWidget {
               onPressed: () {},
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: TextColor.appColor,
+                foregroundColor: AppColors.themeColor,
                 elevation: 0,
                 minimumSize: const Size(0, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 20),

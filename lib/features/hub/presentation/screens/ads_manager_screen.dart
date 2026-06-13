@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/constants/images/images.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 
@@ -49,7 +49,7 @@ class _AdsManagerScreenState extends State<AdsManagerScreen> {
                 width: 40,
                 height: 40,
                 decoration: const BoxDecoration(
-                  color: TextColor.appColor,
+                  color: AppColors.themeColor,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.add, color: Colors.white, size: 20),
@@ -116,8 +116,8 @@ class _AdsManagerScreenState extends State<AdsManagerScreen> {
                     title: 'Learn Python in 30 days',
                     subtitle: 'Poster ad · Started 22 May',
                     iconPath: Images.book_ads,
-                    iconColor: TextColor.appColor,
-                    iconBg: TextColor.appColor.withValues(alpha: 0.1),
+                    iconColor: AppColors.themeColor,
+                    iconBg: AppColors.themeColor.withValues(alpha: 0.1),
                     spentAmount: 4200,
                     totalBudget: 6900,
                     viewsCount: 12600,
@@ -176,13 +176,13 @@ class _AdsManagerScreenState extends State<AdsManagerScreen> {
         fontWeight: FontWeight.w700,
         color: isSelected ? Colors.white : cs.onSurface.withValues(alpha: 0.7),
       ),
-      selectedColor: TextColor.appColor,
+      selectedColor: AppColors.themeColor,
       backgroundColor: isDark ? cs.surfaceContainerHighest : Colors.white,
       elevation: 0,
       pressElevation: 0,
       side: BorderSide(
         color: isSelected
-            ? TextColor.appColor
+            ? AppColors.themeColor
             : cs.outlineVariant,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -287,8 +287,8 @@ class _AdCampaignCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final int remainingBudget = totalBudget - spentAmount;
     final bool isCompleted = remainingBudget == 0;
-    final Color progressAccentColor = isCompleted ? const Color(0xFF22C55E) : TextColor.appColor;
-    final Color budgetTextColor = isCompleted ? const Color(0xFFEF4444) : TextColor.appColor;
+    final Color progressAccentColor = isCompleted ? const Color(0xFF22C55E) : AppColors.themeColor;
+    final Color budgetTextColor = isCompleted ? const Color(0xFFEF4444) : AppColors.themeColor;
 
     return Container(
           padding: const EdgeInsets.all(16),
@@ -356,7 +356,7 @@ class _AdCampaignCard extends StatelessWidget {
                   child: Text(
                     'Active',
                     style: TextStyle(
-                      color: TextColor.appColor,
+                      color: AppColors.themeColor,
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                     ),

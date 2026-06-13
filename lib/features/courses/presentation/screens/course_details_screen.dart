@@ -1,6 +1,6 @@
 import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
@@ -211,7 +211,7 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
-                        color: isSelected ? TextColor.appColor : const Color(0xFFEFEFF0),
+                        color: isSelected ? AppColors.themeColor : const Color(0xFFEFEFF0),
                         width: isSelected ? 2.5 : 1.0,
                       ),
                     ),
@@ -219,7 +219,7 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
                   child: Text(
                     _tabs[index],
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isSelected ? TextColor.appColor : (isDark ? Colors.white.withValues(alpha: 0.6) : TextColor.primaryTextColor),
+                      color: isSelected ? AppColors.themeColor : (isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.primaryText),
                       fontSize: 15,
                     ),
                   ),

@@ -1,4 +1,4 @@
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:flutter/material.dart';
 
 enum AvatarOption { facebook, view, upload }
@@ -35,7 +35,7 @@ Future<AvatarOption?> showAvatarOptionsBottomSheet({
               const SizedBox(height: 24),
               if (hasImage) ...[
                 _OptionTile(
-                  icon: Icon(Icons.image_outlined, size: 24, color: TextColor.appColor),
+                  icon: Icon(Icons.image_outlined, size: 24, color: AppColors.themeColor),
                   title: isAvatar ? 'View Profile Photo' : 'View Cover Photo',
                   subtitle: 'See the full-size image',
                   onTap: () => Navigator.pop(context, AvatarOption.view),
@@ -44,7 +44,7 @@ Future<AvatarOption?> showAvatarOptionsBottomSheet({
                 const SizedBox(height: 8),
               ],
               _OptionTile(
-                icon: Icon(Icons.upload_outlined, size: 24, color: TextColor.appColor),
+                icon: Icon(Icons.upload_outlined, size: 24, color: AppColors.themeColor),
                 title: isAvatar ? 'Upload Photo' : 'Upload Cover',
                 subtitle: 'Pick and crop a new image from your gallery',
                 onTap: () => Navigator.pop(context, AvatarOption.upload),

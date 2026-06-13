@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:edtech/global/core/constants/images/images.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
+import 'package:edtech/global/core/widgets/swipe_action_widget.dart';
 import 'package:edtech/features/courses/presentation/models/manage_module_models.dart';
 
 class ModuleCard extends StatelessWidget {
@@ -17,6 +18,8 @@ class ModuleCard extends StatelessWidget {
   final void Function(int, String) onRenameLesson;
   final void Function(int) onDeleteLesson;
 
+  final ValueNotifier<int>? resetNotifier;
+
   const ModuleCard({
     super.key,
     required this.module,
@@ -30,13 +33,13 @@ class ModuleCard extends StatelessWidget {
     required this.onReorderLesson,
     required this.onRenameLesson,
     required this.onDeleteLesson,
+    this.resetNotifier,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -129,123 +132,121 @@ class ModuleCard extends StatelessWidget {
                       ),
                       itemBuilder: (context, lessonIndex) {
                         final lesson = module.lessons[lessonIndex];
-                        return ReorderableDragStartListener(
+                        return Padding(
                           key: ValueKey('lesson_${lesson.id}'),
-                          index: lessonIndex,
-                          child: Dismissible(
-                            key: ValueKey('dismiss_lesson_${lesson.id}'),
-                            direction: isEditing ? DismissDirection.endToStart : DismissDirection.none,
-                            confirmDismiss: (_) async {
-                              return await showDialog<bool>(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                          padding: EdgeInsets.only(top: lessonIndex > 0 ? 4 : 0),
+                          child: ReorderableDelayedDragStartListener(
+                            index: lessonIndex,
+                            child: SwipeActionWidget(
+                              editIcon: SvgPicture.asset(
+                                Images.edit_profile,
+                                width: 20,
+                                height: 20,
+                                colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
+                              ),
+                              resetNotifier: resetNotifier,
+                              onDelete: () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    title: Text('Delete Lesson', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                                    content: Text('Delete "${lesson.title}"?', style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.of(ctx).pop(false),
+                                        child: Text('Cancel', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6))),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.of(ctx).pop(true),
+                                        child: Text('Delete', style: TextStyle(color: cs.error)),
+                                      ),
+                                    ],
                                   ),
-                                  title: Text(
-                                    'Delete Lesson',
-                                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: cs.onSurface),
-                                  ),
-                                  content: Text(
-                                    'Delete "${lesson.title}"?',
-                                    style: TextStyle(fontSize: 14, color: cs.onSurface),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(false),
-                                      child: Text('Cancel', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6))),
+                                );
+                                if (confirmed == true) {
+                                  onDeleteLesson(lessonIndex);
+                                }
+                                return confirmed == true;
+                              },
+                              onEdit: () => onShowRenameDialog(
+                                lesson.title,
+                                (newName) => onRenameLesson(lessonIndex, newName),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: isDark ? cs.surfaceContainerHighest : const Color(0xFFF8F9FA),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFEFEFF0)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: isDark ? cs.surfaceContainerLow : const Color(0xFFEAEBFE),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: SvgPicture.asset(
+                                          lesson.type == LessonType.video
+                                              ? Images.learn_video
+                                              : Images.resource,
+                                          width: 16,
+                                          height: 16,
+                                          colorFilter: ColorFilter.mode(cs.onSurface, BlendMode.srcIn),
+                                        ),
+                                      ),
                                     ),
-                                    TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(true),
-                                      child: Text('Delete', style: TextStyle(color: cs.error)),
+                                    const SizedBox(width: 12),
+                                    if (isEditing) ...[
+                                      GestureDetector(
+                                        onTap: () => onShowRenameDialog(
+                                          lesson.title,
+                                          (newName) => onRenameLesson(lessonIndex, newName),
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(right: 6),
+                                          child: SvgPicture.asset(
+                                            Images.edit_profile,
+                                            width: 14,
+                                            height: 14,
+                                            colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: isEditing ? () => onShowRenameDialog(
+                                          lesson.title,
+                                          (newName) => onRenameLesson(lessonIndex, newName),
+                                        ) : null,
+                                        child: Text(
+                                          lesson.title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface),
+                                        ),
+                                      ),
                                     ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      lesson.duration,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Icon(Icons.chevron_right, size: 18, color: cs.onSurface),
                                   ],
                                 ),
-                              ) ?? false;
-                            },
-                            onDismissed: (_) => onDeleteLesson(lessonIndex),
-                            background: Container(
-                              decoration: BoxDecoration(
-                                color: cs.error.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
                               ),
-                              alignment: Alignment.center,
-                              child: Icon(Icons.delete_outline, color: cs.error, size: 28),
                             ),
-                            child: Container(
-                            margin: EdgeInsets.only(top: lessonIndex == 0 ? 0 : 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isDark ? cs.surfaceContainerHighest : const Color(0xFFF8F9FA),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFFEFEFF0)),
-                            ),
-                            child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: isDark ? cs.surfaceContainerLow : const Color(0xFFEAEBFE),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: SvgPicture.asset(
-                                    lesson.type == LessonType.video
-                                        ? Images.learn_video
-                                        : Images.resource,
-                                    width: 16,
-                                    height: 16,
-                                    colorFilter: ColorFilter.mode(cs.onSurface, BlendMode.srcIn),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              if (isEditing) ...[
-                                GestureDetector(
-                                  onTap: () => onShowRenameDialog(
-                                    lesson.title,
-                                    (newName) => onRenameLesson(lessonIndex, newName),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 6),
-                                    child: SvgPicture.asset(
-                                      Images.edit_profile,
-                                      width: 14,
-                                      height: 14,
-                                      colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: isEditing ? () => onShowRenameDialog(
-                                    lesson.title,
-                                    (newName) => onRenameLesson(lessonIndex, newName),
-                                  ) : null,
-                                  child: Text(
-                                    lesson.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                lesson.duration,
-                                style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(Icons.chevron_right, size: 18, color: cs.onSurface),
-                            ],
                           ),
-                        ),
-                      ),
-                    );
-                    },
-                  ),
+                        );
+                        },
+                    ),
                 ],
               ),
             ),
@@ -272,7 +273,7 @@ class _ActionButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: TextColor.appColor,
+            color: AppColors.themeColor,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(

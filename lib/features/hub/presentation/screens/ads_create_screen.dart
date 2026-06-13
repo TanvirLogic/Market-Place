@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
@@ -92,7 +92,7 @@ class _AdsCreateScreenState extends State<AdsCreateScreen> {
                             'Video length can be upto 30 seconds',
                             style: TextStyle(
                               fontSize: 13,
-                              color: TextColor.appColor,
+                              color: AppColors.themeColor,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -191,13 +191,13 @@ class _AdsCreateScreenState extends State<AdsCreateScreen> {
         fontWeight: FontWeight.w700,
         color: isSelected ? Colors.white : cs.onSurface.withValues(alpha: 0.7),
       ),
-      selectedColor: TextColor.appColor,
+      selectedColor: AppColors.themeColor,
       backgroundColor: Colors.transparent,
       elevation: 0,
       pressElevation: 0,
       side: BorderSide(
         color: isSelected
-            ? TextColor.appColor
+            ? AppColors.themeColor
             : cs.outlineVariant,
         width: 1,
       ),
@@ -230,7 +230,7 @@ class _AdsCreateScreenState extends State<AdsCreateScreen> {
               'Choose',
               style: TextStyle(
                 fontSize: 14,
-                color: TextColor.appColor,
+                color: AppColors.themeColor,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -267,16 +267,16 @@ class _AdsCreateScreenState extends State<AdsCreateScreen> {
             style: TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.w800,
-              color: TextColor.appColor,
+              color: AppColors.themeColor,
             ),
           ),
           const SizedBox(height: 16),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: TextColor.appColor,
+              activeTrackColor: AppColors.themeColor,
               inactiveTrackColor: cs.outlineVariant,
               thumbColor: Colors.white,
-              overlayColor: TextColor.appColor.withValues(alpha: 0.12),
+              overlayColor: AppColors.themeColor.withValues(alpha: 0.12),
               trackHeight: 6,
               thumbShape:
                   const RoundSliderThumbShape(enabledThumbRadius: 10, elevation: 3),
@@ -357,7 +357,7 @@ class _AdsTextField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: TextColor.appColor, width: 1),
+          borderSide: const BorderSide(color: AppColors.themeColor, width: 1),
         ),
       ),
     );

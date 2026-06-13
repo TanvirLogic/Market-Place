@@ -1,5 +1,5 @@
 import 'package:edtech/global/core/constants/images/images.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -27,7 +27,7 @@ class CourseStatsRow extends StatelessWidget {
               Images.video_icon,
               width: 18,
               height: 18,
-              colorFilter: ColorFilter.mode(TextColor.appColor, BlendMode.srcIn),
+              colorFilter: ColorFilter.mode(AppColors.themeColor, BlendMode.srcIn),
             ),
             const SizedBox(width: 6),
             Text(
@@ -47,7 +47,7 @@ class CourseStatsRow extends StatelessWidget {
               Images.resource,
               width: 18,
               height: 18,
-              colorFilter: ColorFilter.mode(TextColor.appColor, BlendMode.srcIn),
+              colorFilter: ColorFilter.mode(AppColors.themeColor, BlendMode.srcIn),
             ),
             const SizedBox(width: 6),
             Text(

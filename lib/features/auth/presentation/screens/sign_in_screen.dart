@@ -1,6 +1,6 @@
 import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/app/app_routes.dart';
-import 'package:edtech/app/asset_paths.dart';
+import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -125,7 +125,7 @@ class _AppLogo extends StatelessWidget {
       child: Container(
         height: 80,
         width: 80,
-        child: Image.asset(AssetPaths.eduverseLogo, fit: BoxFit.contain, filterQuality: FilterQuality.high),
+        child: Image.asset(Images.eduverseLogo, fit: BoxFit.contain, filterQuality: FilterQuality.high),
       ),
     );
   }
@@ -353,9 +353,8 @@ class _GoogleButton extends StatelessWidget {
                   final idToken = await authProvider.getGoogleIdToken();
                   if (idToken == null || !context.mounted) return;
 
-                  await authProvider.completeGoogleSignIn(idToken, role);
-                  if (context.mounted && authProvider.user?.token != null) {
-                    if (!context.mounted) return;
+                  final success = await authProvider.completeGoogleSignIn(idToken, role);
+                  if (success && context.mounted) {
                     Navigator.pushReplacementNamed(context, AppRoutes.home);
                   }
                 },
@@ -386,7 +385,7 @@ class _GoogleButton extends StatelessWidget {
                   ),
                 )
               else ...[
-                Image.asset(AssetPaths.googleIcon, height: 20),
+                Image.asset(Images.googleIcon, height: 20),
                 const SizedBox(width: 8),
                 Text(
                   "Login with Google",

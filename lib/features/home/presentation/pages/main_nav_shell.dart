@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../global/core/constants/images/images.dart';
-import '../../../../global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import '../../../social/presentation/pages/social_page.dart';
 import 'package:edtech/features/courses/presentation/screens/courses_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/hub_screen.dart';
@@ -50,7 +50,7 @@ class _MainNavShellState extends State<MainNavShell> {
                 return TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: TextColor.appColor,
+                  color: AppColors.themeColor,
                 );
               }
               return TextStyle(
@@ -100,7 +100,7 @@ class _MainNavShellState extends State<MainNavShell> {
         width: 24,
         height: 24,
         colorFilter: ColorFilter.mode(
-          TextColor.appColor,
+          AppColors.themeColor,
           BlendMode.srcIn,
         ),
       ),

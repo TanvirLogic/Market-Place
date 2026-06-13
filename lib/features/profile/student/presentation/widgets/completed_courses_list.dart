@@ -1,6 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import '../../../../../../global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import '../../data/entities/user_profile_entity.dart';
 
 /// Vertical list of completed courses from the API.
@@ -85,7 +85,7 @@ class CompletedCoursesVerticalListView extends StatelessWidget {
                                   ? null
                                   : () => onActionPressed!(item),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: TextColor.appColor,
+                                backgroundColor: AppColors.themeColor,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
@@ -146,7 +146,7 @@ class CompletedCoursesVerticalListView extends StatelessWidget {
                       child: Text(
                         'Completed',
                         style: TextStyle(
-                          color: TextColor.appColor,
+                          color: AppColors.themeColor,
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                         ),

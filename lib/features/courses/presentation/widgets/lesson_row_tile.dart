@@ -1,4 +1,4 @@
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:flutter/material.dart';
 
 class LessonRow extends StatelessWidget {
@@ -43,7 +43,7 @@ class LessonRow extends StatelessWidget {
                   child: Icon(
                     Icons.play_arrow_rounded,
                     size: 18,
-                    color: TextColor.appColor,
+                    color: AppColors.themeColor,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -55,7 +55,7 @@ class LessonRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: TextColor.appColor,
+                      color: AppColors.themeColor,
                     ),
                   ),
                 ),
@@ -65,14 +65,14 @@ class LessonRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: TextColor.appColor.withValues(alpha: 0.7),
+                    color: AppColors.themeColor.withValues(alpha: 0.7),
                   ),
                 ),
                 const SizedBox(width: 4),
                 Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 14,
-                  color: TextColor.appColor.withValues(alpha: 0.5),
+                  color: AppColors.themeColor.withValues(alpha: 0.5),
                 ),
               ],
             ),

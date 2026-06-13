@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:dotted_border/dotted_border.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -381,7 +381,7 @@ class _CustomCropScreenState extends State<CustomCropScreen> {
                   clipBehavior: Clip.hardEdge,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: TextColor.appColor, width: 2.5),
+                    border: Border.all(color: AppColors.themeColor, width: 2.5),
                   ),
                   child: InteractiveViewer(
                     transformationController: _transformController,
@@ -512,7 +512,7 @@ class _CustomCropScreenState extends State<CustomCropScreen> {
             left: left - 1,
             top: top - 1,
             child: DottedBorder(
-              color: TextColor.appColor,
+              color: AppColors.themeColor,
               strokeWidth: 2.5,
               dashPattern: const [8, 4],
               borderType: BorderType.Circle,
@@ -524,7 +524,7 @@ class _CustomCropScreenState extends State<CustomCropScreen> {
             left: left - 1,
             top: top - 1,
             child: DottedBorder(
-              color: TextColor.appColor,
+              color: AppColors.themeColor,
               strokeWidth: 2.5,
               dashPattern: const [8, 4],
               borderType: BorderType.RRect,

@@ -176,6 +176,7 @@ class SignInProvider extends ChangeNotifier {
     notifyListeners();
 
     await getNetworkCaller().postRequest(url: Urls.logoutUrl);
+    await _googleSignInService.signOut();
     await AuthController.clearUserData();
     _user = null;
 

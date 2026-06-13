@@ -4,11 +4,11 @@ import 'package:provider/provider.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
-import 'package:edtech/features/mentor/providers/mentor_profile_provider.dart';
+import 'package:edtech/features/profile/mentor/providers/mentor_profile_provider.dart';
 import 'package:edtech/features/profile/shared/models/social_link_param.dart';
 import 'package:edtech/features/profile/student/data/entities/user_profile_entity.dart';
-import 'package:edtech/features/student/providers/edit_profile_provider.dart';
-import 'package:edtech/features/student/providers/student_profile_provider.dart';
+import 'package:edtech/features/profile/student/providers/edit_profile_provider.dart';
+import 'package:edtech/features/profile/student/providers/student_profile_provider.dart';
 import '../widgets/social_link_form_block_ui.dart';
 
 class EditProfileScreen extends StatefulWidget {

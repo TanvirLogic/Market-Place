@@ -1,4 +1,4 @@
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:flutter/material.dart';
 
 class AuthButton extends StatelessWidget {
@@ -29,7 +29,7 @@ class AuthButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(borderRadius),
         child: Ink(
           decoration: BoxDecoration(
-            color: TextColor.appColor,
+            color: AppColors.themeColor,
             borderRadius: BorderRadius.circular(borderRadius),
           ),
           child: InkWell(

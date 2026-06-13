@@ -1,5 +1,5 @@
 import 'package:edtech/app/app_routes.dart';
-import 'package:edtech/app/asset_paths.dart';
+import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sign_in_provider.dart';
@@ -60,7 +60,7 @@ class _SuccessIllustration extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(child: Container(height: 280, width: 280, child: Image.asset(AssetPaths.passwordSuccess)));
+    return Center(child: Container(height: 280, width: 280, child: Image.asset(Images.passwordSuccess)));
   }
 }
 

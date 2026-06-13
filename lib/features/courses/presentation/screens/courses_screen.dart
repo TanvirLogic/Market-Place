@@ -1,6 +1,6 @@
 import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:flutter/material.dart';
@@ -53,7 +53,7 @@ class CoursesScreen extends StatelessWidget {
             const SizedBox(height: 24),
             Text(
               'My Course (2)',
-              style: TextStyle(fontSize: 20, color: isDark ? Colors.white : TextColor.primaryTextColor),
+              style: TextStyle(fontSize: 20, color: isDark ? Colors.white : AppColors.primaryText),
             ),
             const SizedBox(height: 16),
             Row(
@@ -87,7 +87,7 @@ class CoursesScreen extends StatelessWidget {
             const SizedBox(height: 24),
             Text(
               'Recommended Course',
-              style: TextStyle(fontSize: 20, color: isDark ? Colors.white : TextColor.primaryTextColor),
+              style: TextStyle(fontSize: 20, color: isDark ? Colors.white : AppColors.primaryText),
             ),
             const SizedBox(height: 16),
             _RecommendedCard(cs: cs, isDark: isDark),
@@ -166,7 +166,7 @@ class _MyCourseCard extends StatelessWidget {
                             level,
                             style: TextStyle(
                               fontSize: 9,
-                      color: isDark ? Colors.white : TextColor.primaryTextColor,
+                      color: isDark ? Colors.white : AppColors.primaryText,
                             ),
                           ),
                         ],
@@ -192,7 +192,7 @@ class _MyCourseCard extends StatelessWidget {
                             isFree ? 'Free' : 'Paid',
                             style: TextStyle(
                               fontSize: 9,
-                      color: isDark ? Colors.white : TextColor.primaryTextColor,
+                      color: isDark ? Colors.white : AppColors.primaryText,
                             ),
                           ),
                         ],
@@ -223,7 +223,7 @@ class _MyCourseCard extends StatelessWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: isDark ? Colors.white : TextColor.primaryTextColor),
+                style: TextStyle(fontSize: 12, color: isDark ? Colors.white : AppColors.primaryText),
               ),
             ),
             const SizedBox(height: 6),
@@ -238,7 +238,7 @@ class _MyCourseCard extends StatelessWidget {
                       const SizedBox(width: 3),
                       Text(
                         lessons,
-                        style: TextStyle(fontSize: 10, color: isDark ? Colors.white.withValues(alpha: 0.6) : TextColor.primaryTextColor),
+                        style: TextStyle(fontSize: 10, color: isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.primaryText),
                       ),
                     ],
                   ),
@@ -248,7 +248,7 @@ class _MyCourseCard extends StatelessWidget {
                       minimumSize: const Size(56, 22),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       backgroundColor: cs.surfaceContainerHighest,
-                      foregroundColor: isDark ? Colors.white : TextColor.primaryTextColor,
+                      foregroundColor: isDark ? Colors.white : AppColors.primaryText,
                       elevation: 0,
                     ),
                     child: const Text('Continue', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
@@ -310,7 +310,7 @@ class _RecommendedCard extends StatelessWidget {
                       ),
                       child: Text(
                         'by Sarah Wilson',
-                        style: TextStyle(fontSize: 12, color: TextColor.primaryTextColor),
+                        style: TextStyle(fontSize: 12, color: AppColors.primaryText),
                       ),
                     ),
                   ),
@@ -329,7 +329,7 @@ class _RecommendedCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Text(
                             '4.9',
-                            style: TextStyle(fontSize: 12, color: TextColor.primaryTextColor),
+                            style: TextStyle(fontSize: 12, color: AppColors.primaryText),
                           ),
                         ],
                       ),
@@ -342,7 +342,7 @@ class _RecommendedCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             'Full-Stack AI Development 2027',
-            style: TextStyle(fontSize: 18, color: isDark ? Colors.white : TextColor.primaryTextColor),
+            style: TextStyle(fontSize: 18, color: isDark ? Colors.white : AppColors.primaryText),
           ),
           const SizedBox(height: 4),
           Text(
@@ -365,7 +365,7 @@ class _RecommendedCard extends StatelessWidget {
             children: [
               Text(
                 '\u09F367.67',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500, color: TextColor.appColor),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500, color: AppColors.themeColor),
               ),
               SizedBox(
                 width: 120,
@@ -391,14 +391,14 @@ class _RecommendedCard extends StatelessWidget {
         Icon(
           icon,
           size: 16,
-          color: isDark ? Colors.white : TextColor.appColor,
+          color: isDark ? Colors.white : AppColors.themeColor,
         ),
         const SizedBox(width: 4),
         Text(
           label,
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? Colors.white : TextColor.primaryTextColor,
+            color: isDark ? Colors.white : AppColors.primaryText,
           ),
         ),
       ],
@@ -414,7 +414,7 @@ class _RecommendedCard extends StatelessWidget {
           width: 16,
           height: 16,
           colorFilter: ColorFilter.mode(
-            isDark ? Colors.white : TextColor.appColor,
+            isDark ? Colors.white : AppColors.themeColor,
             BlendMode.srcIn,
           ),
         ),
@@ -423,7 +423,7 @@ class _RecommendedCard extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? Colors.white : TextColor.primaryTextColor,
+            color: isDark ? Colors.white : AppColors.primaryText,
           ),
         ),
       ],

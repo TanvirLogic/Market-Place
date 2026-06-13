@@ -1,5 +1,7 @@
+import 'package:edtech/global/core/config/app_config.dart';
+
 class Urls {
-  static const String _baseUrl = 'http://108.181.195.154:3000/api/v1';
+  static const String _baseUrl = AppConfig.baseUrl;
   static const String signInUrl = '$_baseUrl/auth/login';
   static const String signUpUrl = '$_baseUrl/auth/register';
   static const String googleAuthUrl = '$_baseUrl/auth/google';
@@ -17,8 +19,6 @@ class Urls {
   static const String avatarConfirmUrl = '$_baseUrl/profile/avatar/confirm';
   static const String coverUploadUrl = '$_baseUrl/profile/cover/upload-url';
   static const String coverConfirmUrl = '$_baseUrl/profile/cover/confirm';
-  static String courseDetailsUrl(String id) => '$_baseUrl/courses/$id';
-  static String enrolledCourseUrl(String id) => '$_baseUrl/courses/$id/enrolled';
   static const String courseAssetsUploadUrl = '$_baseUrl/course/assets/upload';
   static const String createCourseUrl = '$_baseUrl/course';
 }

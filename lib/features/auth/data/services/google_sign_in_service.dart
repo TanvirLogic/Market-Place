@@ -72,6 +72,8 @@ class GoogleSignInService {
     }
   }
 
+  Future<void> signOut() => _googleSignIn.signOut();
+
   /// Attempts a Google Sign-In and returns the idToken on success, or `null`
   /// if the user cancels.
   ///

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:edtech/global/core/constants/text/text_color.dart';
+import 'package:edtech/app/app_colors.dart';
 
 /// Displays the mentor's name, username, and role.
 class MentorIdentityHeader extends StatelessWidget {
@@ -31,7 +31,7 @@ class MentorIdentityHeader extends StatelessWidget {
         Text(
           "@$username",
           style: TextStyle(
-            color: TextColor.appColor,
+            color: AppColors.themeColor,
             fontWeight: FontWeight.w500,
             fontSize: 14,
           ),

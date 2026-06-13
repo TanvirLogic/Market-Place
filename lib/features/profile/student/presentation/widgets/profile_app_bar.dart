@@ -3,7 +3,7 @@ import 'package:edtech/app/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
-import 'package:edtech/features/student/providers/student_profile_provider.dart';
+import 'package:edtech/features/profile/student/providers/student_profile_provider.dart';
 
 /// Custom app bar for the profile page with back button and edit action.
 class ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import '../../../../../../global/core/constants/images/images.dart';
-import '../../../../../../global/core/constants/text/text_color.dart';
-import 'package:edtech/features/avatar/providers/avatar_upload_provider.dart';
+import 'package:edtech/app/app_colors.dart';
+import 'package:edtech/features/profile/avatar/providers/avatar_upload_provider.dart';
 import '../../data/entities/user_profile_entity.dart';
 
 /// Displays the student's avatar, username, role, stats (videos/courses), and bio.
@@ -123,7 +123,7 @@ class ProfileHeaderCard extends StatelessWidget {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: const BoxDecoration(
-                              color: TextColor.appColor,
+                              color: AppColors.themeColor,
                               shape: BoxShape.circle,
                             ),
                             child: SvgPicture.asset(
@@ -154,7 +154,7 @@ class ProfileHeaderCard extends StatelessWidget {
               Text(
                 "@${student.username}",
                 style: TextStyle(
-                  color: TextColor.appColor,
+                  color: AppColors.themeColor,
                   fontSize: 20,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 0.3,
@@ -179,7 +179,7 @@ class ProfileHeaderCard extends StatelessWidget {
                     Images.video_icon,
                     width: 16,
                     height: 16,
-                    colorFilter: ColorFilter.mode(TextColor.appColor, BlendMode.srcIn),
+                    colorFilter: ColorFilter.mode(AppColors.themeColor, BlendMode.srcIn),
                   ),
                   const SizedBox(width: 2),
                   Text(
@@ -195,7 +195,7 @@ class ProfileHeaderCard extends StatelessWidget {
                     Images.book_icon,
                     width: 16,
                     height: 16,
-                    colorFilter: ColorFilter.mode(TextColor.appColor, BlendMode.srcIn),
+                    colorFilter: ColorFilter.mode(AppColors.themeColor, BlendMode.srcIn),
                   ),
                   const SizedBox(width: 2),
                   Text(

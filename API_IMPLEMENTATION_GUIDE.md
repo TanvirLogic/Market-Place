@@ -36,11 +36,13 @@ Screen → Provider (ChangeNotifier) → NetworkCaller → API
 
 ---
 
-## Pattern 1: Simple Fetch (GET a list or single object)
+## Part 1: API Integration Patterns
+
+### Pattern 1: Simple Fetch (GET a list or single object)
 
 Use when: `GET /courses`, `GET /profile/me`, etc.
 
-### Prompt to give AI:
+#### Prompt to give AI:
 
 ```
 I have a Flutter project using Provider + NetworkCaller. I need to integrate an API endpoint.
@@ -73,11 +75,11 @@ Return ONLY the file path and the code content for each file.
 
 ---
 
-## Pattern 2: Create / Update (POST / PUT with body)
+### Pattern 2: Create / Update (POST / PUT with body)
 
 Use when: `POST /course`, `PUT /profile/update`, etc.
 
-### Prompt to give AI:
+#### Prompt to give AI:
 
 ```
 I have a Flutter project using Provider + NetworkCaller. I need to integrate a create/update API.
@@ -103,7 +105,7 @@ Generate:
 
 ---
 
-## Pattern 3: File Upload with Presigned URL (Avatar / Cover / Course Assets)
+### Pattern 3: File Upload with Presigned URL (Avatar / Cover / Course Assets)
 
 Use when: POST to get upload URL → PUT file to S3 → PUT to confirm.
 
@@ -112,7 +114,7 @@ Current reference implementations:
 - Cover: `lib/features/avatar/providers/cover_upload_provider.dart`
 - Course assets: `lib/features/courses/providers/course_upload_provider.dart`
 
-### Prompt to give AI:
+#### Prompt to give AI:
 
 ```
 I have a Flutter project using Provider + NetworkCaller. I need to integrate a presigned URL upload flow.
@@ -143,13 +145,13 @@ Generate:
 
 ---
 
-## Pattern 4: Delete (DELETE)
+### Pattern 4: Delete (DELETE)
 
 Use when: `DELETE /courses/:id`, etc.
 
 `NetworkCaller.deleteRequest()` is available — same auto-auth, refresh, and logging as all other methods.
 
-### Prompt to give AI:
+#### Prompt to give AI:
 
 ```
 I have a Flutter project using Provider + NetworkCaller. I need to integrate a DELETE endpoint.
@@ -171,7 +173,7 @@ Generate:
 
 ---
 
-## Pattern 5: Paginated List (GET with page/limit)
+### Pattern 5: Paginated List (GET with page/limit)
 
 Use when: `GET /courses?page=1&limit=10`.
 
@@ -187,7 +189,7 @@ final hasMore = listData['page'] < listData['totalPages'];
 
 ---
 
-## Pattern 6: Search / Filter (GET with query params)
+### Pattern 6: Search / Filter (GET with query params)
 
 Same as a regular GET — just append query params to the URL string:
 
@@ -200,11 +202,11 @@ For debounced search in the UI, use a `Timer` with 500ms delay in the provider.
 
 ---
 
-## Pattern 7: Auth Endpoint (Login / Register / Refresh / Verify OTP)
+### Pattern 7: Auth Endpoint (Login / Register / Refresh / Verify OTP)
 
 Use when: the endpoint returns tokens. **Must use `getNetworkCaller(isPublic: true)`**.
 
-### Prompt to give AI:
+#### Prompt to give AI:
 
 ```
 I have a Flutter project using Provider + NetworkCaller. I need to integrate an auth API.
@@ -236,7 +238,7 @@ Generate:
 
 ---
 
-## Pattern 5: Refetch Profile After Mutation (Avatar/Cover/Profile Update)
+### Pattern 8: Refetch Profile After Mutation (Avatar/Cover/Profile Update)
 
 Already handled — every upload/update provider has an `onUploadSuccess` callback. The profile screen sets it in `initState`:
 
@@ -246,7 +248,290 @@ context.read<AvatarUploadProvider>().onUploadSuccess = (newUrl) {
 };
 ```
 
-No additional work needed.
+---
+
+## Part 2: UI Consumption Patterns
+
+Once a provider is set up, here's how to consume it in the **presentation layer**.
+
+### Pattern UI-1: Three-State Screen (Loading / Error / Data)
+
+The most common pattern. Show a shimmer while loading, an error state on failure, and the full UI on success.
+
+```dart
+// In your screen's build method:
+Consumer<YourProvider>(
+  builder: (context, provider, _) {
+    // 1. LOADING STATE
+    if (provider.isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Title')),
+        body: const YourSkeleton(), // shimmer or CircularProgressIndicator
+      );
+    }
+
+    // 2. ERROR STATE
+    if (provider.errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Title')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(provider.errorMessage!),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => context.read<YourProvider>().fetchData(),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 3. DATA STATE
+    final data = provider.data;
+    if (data == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Title')),
+        body: const Center(child: Text('No data available')),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Title')),
+      body: YourContent(data: data),
+    );
+  },
+);
+```
+
+**Existing references:**
+- `course_details_screen.dart` — shows `_CourseDetailsSkeleton` while `course == null`, then full UI
+- `student_profile_screen.dart` — Consumer with loading/error/data branches
+
+### Pattern UI-2: Init Fetch on Screen Open
+
+Always call your provider's fetch method in `initState` via `addPostFrameCallback`:
+
+```dart
+// For a StatefulWidget:
+@override
+void initState() {
+  super.initState();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted) return;
+    context.read<YourProvider>().fetchData();
+  });
+}
+```
+
+**For screen-scoped providers** (created inline with `ChangeNotifierProvider`):
+
+```dart
+class YourScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => CourseDetailProvider()..loadCourse('1'),
+      child: _YourBody(),
+    );
+  }
+}
+```
+
+**Existing references:**
+- `enrolled_course_screen.dart` — passes provider directly in `create`
+- `course_details_screen.dart` — calls `loadCourse` in `initState`
+- `student_profile_screen.dart` — calls `fetchProfile()` in `initState`
+
+### Pattern UI-3: Form Submission with Loading Button
+
+Use `AuthButton` widget for forms. It shows a `CircularProgressIndicator` while the provider is loading.
+
+```dart
+Consumer<YourProvider>(
+  builder: (context, provider, _) => AuthButton(
+    text: "Submit",
+    isLoading: provider.isLoading,
+    onPressed: provider.isLoading
+        ? null
+        : () async {
+            final success = await provider.submitData(...);
+            if (success && context.mounted) {
+              Navigator.pop(context); // or push to next screen
+            }
+          },
+  ),
+)
+```
+
+**Existing references:**
+- `sign_in_screen.dart` — `AuthButton` with `provider.inProgress`
+- `edit_profile_screen.dart` — `AuthButton` with `provider.isLoading`
+
+### Pattern UI-4: Form Validation + API Call
+
+Collect form values → validate → call provider → handle result.
+
+```dart
+final _formKey = GlobalKey<FormState>();
+final _emailController = TextEditingController();
+final _passwordController = TextEditingController();
+
+void _handleSubmit() async {
+  if (!_formKey.currentState!.validate()) return;
+
+  final provider = context.read<YourProvider>();
+  final success = await provider.submitData(
+    _emailController.text.trim(),
+    _passwordController.text,
+  );
+
+  if (success && context.mounted) {
+    Navigator.pushReplacementNamed(context, AppRoutes.nextScreen);
+  }
+}
+```
+
+**Key points:**
+- Always use `Form` + `GlobalKey<FormState>` for validation
+- Call `TextEditingController.dispose()` in `dispose()`
+- Check `mounted` after async gaps before using `context` or `Navigator`
+
+**Existing references:**
+- `sign_in_screen.dart` — full login form with validation
+- `edit_profile_screen.dart` — multi-field form with social links
+
+### Pattern UI-5: App-Scoped vs Screen-Scoped Providers
+
+**App-scoped** (registered in `app.dart`): Use for data shared across screens (profile, auth, theme).
+
+```dart
+// Read (no rebuild):
+context.read<StudentProfileProvider>().fetchProfile();
+
+// Watch (rebuild on change):
+context.watch<StudentProfileProvider>().profile;
+```
+
+**Screen-scoped** (created inline): Use for data only needed on one screen (course details, upload).
+
+```dart
+ChangeNotifierProvider(
+  create: (_) => CourseDetailProvider()..loadCourse('1'),
+  child: Consumer<CourseDetailProvider>(
+    builder: (context, provider, _) {
+      if (provider.course == null) return Skeleton();
+      return FullUI(course: provider.course!);
+    },
+  ),
+)
+```
+
+**Rule of thumb:** If only one screen uses the data, make it screen-scoped. If multiple screens need it, register it in `app.dart`.
+
+### Pattern UI-6: Upload Progress UI
+
+For file uploads with progress tracking:
+
+```dart
+Consumer<AvatarUploadProvider>(
+  builder: (context, provider, _) {
+    if (provider.isUploading) {
+      return Column(
+        children: [
+          LinearProgressIndicator(value: provider.uploadProgress),
+          const SizedBox(height: 8),
+          Text('${(provider.uploadProgress * 100).toInt()}%'),
+        ],
+      );
+    }
+    // Normal state
+  },
+)
+```
+
+**Existing references:**
+- `edit_profile_screen.dart` — avatar upload with progress bar
+- `upload_course_screen.dart` — multi-step upload with dynamic button text
+
+### Pattern UI-7: Pull-to-Refresh
+
+Wrap content in `RefreshIndicator`:
+
+```dart
+RefreshIndicator(
+  onRefresh: () => context.read<YourProvider>().fetchData(),
+  child: ListView(/* your content */),
+)
+```
+
+**Existing references:**
+- `student_profile_screen.dart` — pull-to-refresh on profile
+- `mentor_profile_screen.dart` — pull-to-refresh on mentor profile
+
+### Pattern UI-8: Toast After API Action
+
+Show success/error messages after API calls:
+
+```dart
+// In provider:
+if (response.isSuccess) {
+  ToastService.showSuccess("Item created successfully!");
+} else {
+  ToastService.showError(response.errorMessage ?? 'Something went wrong');
+}
+```
+
+**Important:** Toast messages are displayed via `scaffoldMessengerKey` (globally wired in `MaterialApp`), so they work even when providers don't have a `BuildContext`.
+
+### Pattern UI-9: Navigation After API Success
+
+After a successful API call in the provider, the screen decides what to do:
+
+```dart
+// In screen:
+final success = await provider.submitData(...);
+if (success && context.mounted) {
+  // Option A: pop back
+  Navigator.pop(context);
+
+  // Option B: push to next screen
+  Navigator.pushNamed(context, AppRoutes.nextScreen, arguments: {...});
+
+  // Option C: replace current screen
+  Navigator.pushReplacementNamed(context, AppRoutes.home);
+}
+```
+
+**Existing references:**
+- `sign_in_screen.dart` — `Navigator.pushReplacementNamed` after sign-in
+- `register_screen.dart` — `Navigator.pushNamed` to verification after sign-up
+- `edit_profile_screen.dart` — `Navigator.pop` after profile update
+
+### Pattern UI-10: Google Sign-In Flow (Full Example)
+
+Complete UI flow:
+
+```dart
+// 1. Show role bottom sheet
+final role = await showModalBottomSheet<String>(context: context, builder: ...);
+if (role == null || !context.mounted) return;
+
+// 2. Get Google idToken
+final idToken = await authProvider.getGoogleIdToken();
+if (idToken == null || !context.mounted) return;
+
+// 3. Send to backend
+final success = await authProvider.completeGoogleSignIn(idToken, role);
+if (success && context.mounted) {
+  Navigator.pushReplacementNamed(context, AppRoutes.home);
+}
+```
+
+**Existing reference:** `sign_in_screen.dart:_GoogleButton.build()` — full implementation.
 
 ---
 
@@ -298,6 +583,7 @@ No additional work needed.
 5. **Error toasts**: Friendly messages like `'Failed to upload image'`, never raw server text.
 6. **Debug logging**: Use `AppLogger.i()` / `AppLogger.e()` instead of `print` / `debugPrint`.
 7. **Callback pattern**: Upload providers expose `onUploadSuccess` callback. Profile screens wire it in `initState` to refetch.
+8. **Consumer vs watch**: Use `Consumer<X>` when only part of the widget tree needs to rebuild. Use `context.watch<X>()` when the whole build method depends on the provider.
 
 ---
 
@@ -308,5 +594,7 @@ No additional work needed.
 3. Write the method using `getNetworkCaller().getRequest/postRequest/putRequest()`
 4. Register provider in `lib/app/app.dart`
 5. Use `Consumer<YourProvider>` in the UI screen
+6. Call provider method in `initState` via `addPostFrameCallback`
+7. Handle loading/error/data states in the UI
 
-*Last updated: 2026-06-12*
+*Last updated: 2026-06-13*

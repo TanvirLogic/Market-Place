@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
+import 'package:edtech/global/core/widgets/swipe_action_widget.dart';
 import 'package:edtech/features/courses/presentation/models/manage_module_models.dart';
 import 'package:edtech/features/courses/presentation/widgets/module_card.dart';
 
@@ -29,6 +30,7 @@ class _ManageModuleScreenState extends State<ManageModuleScreen> {
   ];
   bool _isEditing = false;
   bool _hasUnsavedChanges = false;
+  final ValueNotifier<int> _resetNotifier = ValueNotifier(0);
 
   List<Map<String, dynamic>> getSerializedOrder() {
     return _modules.asMap().entries.map((entry) {
@@ -125,7 +127,10 @@ class _ManageModuleScreenState extends State<ManageModuleScreen> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: SingleChildScrollView(
+            child: GestureDetector(
+              onTap: () => _resetNotifier.value++,
+              onVerticalDragDown: (_) => _resetNotifier.value++,
+              child: SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 100),
               physics: const BouncingScrollPhysics(),
               child: Column(
@@ -142,24 +147,24 @@ class _ManageModuleScreenState extends State<ManageModuleScreen> {
                       thickness: 1.0,
                     ),
                   ),
-                  if (_isEditing)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        "To Delete Module or Lesson swipe right or left",
-                        style: TextStyle(
-                          color: cs.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      "Swipe left to delete or edit",
+                      style: TextStyle(
+                        color: cs.onSurface.withValues(alpha: 0.4),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
+                  ),
                   const SizedBox(height: 8),
                   _buildModulesList(cs, isDark),
                 ],
               ),
             ),
           ),
+        ),
           Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
         ],
       ),
@@ -218,14 +223,7 @@ class _ManageModuleScreenState extends State<ManageModuleScreen> {
                       ),
                     ),
               onPressed: () {
-                if (_isEditing) {
-                  if (_hasUnsavedChanges) _saveOrder();
-                  setState(() => _isEditing = false);
-                } else {
-                  setState(() {
-                    _isEditing = true;
-                  });
-                }
+                setState(() => _isEditing = !_isEditing);
               },
             ),
           ),
@@ -349,128 +347,193 @@ class _ManageModuleScreenState extends State<ManageModuleScreen> {
           _hasUnsavedChanges = true;
         });
       },
-      proxyDecorator: (child, index, animation) => AnimatedBuilder(
-        animation: animation,
-        builder: (context, child) => Material(
+      proxyDecorator: (child, index, animation) {
+        final module = _modules[index];
+        return Material(
           elevation: 4,
           borderRadius: BorderRadius.circular(12),
-          child: child,
-        ),
-        child: child,
-      ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isDark ? cs.surfaceContainerLow : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE3E3E4)),
+            ),
+            child: Text(
+              module.title,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: cs.onSurface),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        );
+      },
       itemBuilder: (context, index) {
         final module = _modules[index];
-        return ReorderableDragStartListener(
+        return Padding(
           key: ValueKey('module_${module.id}'),
-          index: index,
-          child: Dismissible(
-            key: ValueKey('dismiss_${module.id}'),
-            direction: _isEditing ? DismissDirection.endToStart : DismissDirection.none,
-            confirmDismiss: (_) async {
-              return await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  title: Text(
-                    'Delete Module',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: cs.onSurface),
-                  ),
-                  content: Text(
-                    'Delete "${module.title}"?',
-                    style: TextStyle(fontSize: 14, color: cs.onSurface),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(false),
-                      child: Text('Cancel', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6))),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(true),
-                      child: Text('Delete', style: TextStyle(color: cs.error)),
-                    ),
-                  ],
-                ),
-              ) ?? false;
-            },
-            onDismissed: (_) {
-              setState(() {
-                _modules.removeAt(index);
-                _hasUnsavedChanges = true;
-              });
-            },
-            background: Container(
-              decoration: BoxDecoration(
-                color: cs.error.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+          padding: const EdgeInsets.only(bottom: 12),
+          child: ReorderableDelayedDragStartListener(
+            index: index,
+            child: SwipeActionWidget(
+              editIcon: SvgPicture.asset(
+                Images.edit_profile,
+                width: 20,
+                height: 20,
+                colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
               ),
-              alignment: Alignment.center,
-              child: Icon(Icons.delete_outline, color: cs.error, size: 28),
+              resetNotifier: _resetNotifier,
+              onDelete: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: Text('Delete Module', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                    content: Text('Delete "${module.title}"?', style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: Text('Cancel', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6))),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: Text('Delete', style: TextStyle(color: cs.error)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true && mounted) {
+                  setState(() {
+                    _modules.removeAt(index);
+                    _hasUnsavedChanges = true;
+                  });
+                }
+                return confirmed == true;
+              },
+              onEdit: () => _showRenameDialog(module.title, (newName) {
+                setState(() {
+                  module.title = newName;
+                  _hasUnsavedChanges = true;
+                });
+              }),
+              child: ModuleCard(
+              resetNotifier: _resetNotifier,
+              module: module,
+              isDark: isDark,
+              isEditing: _isEditing,
+              onToggleExpand: () => setState(() => module.isExpanded = !module.isExpanded),
+              onRename: (newName) => setState(() {
+                module.title = newName;
+                _hasUnsavedChanges = true;
+              }),
+              onShowRenameDialog: _showRenameDialog,
+              onAddVideo: () => _addLessonToModule(index, LessonType.video),
+              onAddResource: () => _addLessonToModule(index, LessonType.resource),
+              onReorderLesson: (oldLessonIndex, newLessonIndex) {
+                setState(() {
+                  if (newLessonIndex > oldLessonIndex) newLessonIndex--;
+                  final lesson = module.lessons.removeAt(oldLessonIndex);
+                  module.lessons.insert(newLessonIndex, lesson);
+                  _hasUnsavedChanges = true;
+                });
+              },
+              onRenameLesson: (lessonIndex, newName) {
+                setState(() {
+                  module.lessons[lessonIndex].title = newName;
+                  _hasUnsavedChanges = true;
+                });
+              },
+              onDeleteLesson: (lessonIndex) {
+                setState(() {
+                  module.lessons.removeAt(lessonIndex);
+                  _hasUnsavedChanges = true;
+                });
+              },
             ),
-            child: ModuleCard(
-            module: module,
-            isDark: isDark,
-            isEditing: _isEditing,
-            onToggleExpand: () =>
-                setState(() => module.isExpanded = !module.isExpanded),
-            onRename: (newName) => setState(() {
-              module.title = newName;
-              _hasUnsavedChanges = true;
-            }),
-            onShowRenameDialog: _showRenameDialog,
-            onAddVideo: () => _addLessonToModule(index, LessonType.video),
-            onAddResource: () => _addLessonToModule(index, LessonType.resource),
-            onReorderLesson: (oldLessonIndex, newLessonIndex) {
-              setState(() {
-                if (newLessonIndex > oldLessonIndex) newLessonIndex--;
-                final lesson = module.lessons.removeAt(oldLessonIndex);
-                module.lessons.insert(newLessonIndex, lesson);
-                _hasUnsavedChanges = true;
-              });
-            },
-            onRenameLesson: (lessonIndex, newName) {
-              setState(() {
-                module.lessons[lessonIndex].title = newName;
-                _hasUnsavedChanges = true;
-              });
-            },
-            onDeleteLesson: (lessonIndex) {
-              setState(() {
-                module.lessons.removeAt(lessonIndex);
-                _hasUnsavedChanges = true;
-              });
-            },
           ),
         ),
-      );
+        );
       },
     );
   }
 
   Widget _buildBottomBar() {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
       ),
-      child: AuthButton(
-        text: "Add Module",
-        height: 50,
-        borderRadius: 24,
-        onPressed: () {
-          setState(() {
-            _modules.add(
-              CourseModule(
-                id: _nextModuleId++,
-                title: "New Dynamic Module #${_modules.length + 1}",
-                lessons: [],
-                isExpanded: true,
-              ),
-            );
-          });
-        },
-      ),
+      child: _hasUnsavedChanges
+          ? Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: AuthButton(
+                    text: "Add Module",
+                    height: 50,
+                    borderRadius: 24,
+                    fontSize: 14,
+                    onPressed: () {
+                      _resetNotifier.value++;
+                      setState(() {
+                        _modules.add(
+                          CourseModule(
+                            id: _nextModuleId++,
+                            title: "New Dynamic Module #${_modules.length + 1}",
+                            lessons: [],
+                            isExpanded: true,
+                          ),
+                        );
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 4,
+                  child: SizedBox(
+                    height: 50,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        side: BorderSide(color: cs.primary),
+                      ),
+                      onPressed: () {
+                        _resetNotifier.value++;
+                        _saveOrder();
+                      },
+                      child: Text(
+                        "Save Changes",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : AuthButton(
+              text: "Add Module",
+              height: 50,
+              borderRadius: 24,
+              onPressed: () {
+                _resetNotifier.value++;
+                setState(() {
+                  _modules.add(
+                    CourseModule(
+                      id: _nextModuleId++,
+                      title: "New Dynamic Module #${_modules.length + 1}",
+                      lessons: [],
+                      isExpanded: true,
+                    ),
+                  );
+                });
+              },
+            ),
     );
   }
 }
