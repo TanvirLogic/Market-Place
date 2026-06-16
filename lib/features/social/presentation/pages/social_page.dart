@@ -39,7 +39,12 @@ class _SocialPageState extends State<SocialPage> {
     final isSearchActive = _currentQuery.isNotEmpty;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(left: AppSizes.horizontalPadding, right: AppSizes.horizontalPadding, top: 8, bottom: 24),
+      padding: const EdgeInsets.only(
+        left: AppSizes.horizontalPadding,
+        right: AppSizes.horizontalPadding,
+        top: 8,
+        bottom: 24,
+      ),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,8 +60,13 @@ class _SocialPageState extends State<SocialPage> {
             TextFormField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: isSearchActive ? 'Code with Mosh' : 'Search Videos or Content...',
-                prefixIcon: Icon(Icons.search, color: cs.onSurface.withValues(alpha: 0.6)),
+                hintText: isSearchActive
+                    ? 'Code with Mosh'
+                    : 'Search Videos or Content...',
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: cs.onSurface.withValues(alpha: 0.6),
+                ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 filled: true,
                 fillColor: isDark ? cs.surfaceContainerHighest : Colors.white,
@@ -144,9 +154,7 @@ class _VideoFeedCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        border: Border.all(
-          color: AppColors.border,
-        ),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -162,25 +170,40 @@ class _VideoFeedCard extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 26,
                       backgroundColor: Colors.black54,
-                      child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 32),
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      ),
                     ),
                   ),
                   Positioned(
                     bottom: 12,
                     right: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.access_time, color: Colors.white, size: 12),
+                          const Icon(
+                            Icons.access_time,
+                            color: Colors.white,
+                            size: 12,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             videoDuration,
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -194,10 +217,7 @@ class _VideoFeedCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: cs.outlineVariant,
-              ),
+              CircleAvatar(radius: 20, backgroundColor: cs.outlineVariant),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -226,10 +246,15 @@ class _VideoFeedCard extends StatelessWidget {
                         ),
                         const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: cs.outlineVariant,
-                            borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                            borderRadius: BorderRadius.circular(
+                              AppSizes.radiusSm,
+                            ),
                           ),
                           child: Text(
                             timeAgo,
@@ -246,7 +271,7 @@ class _VideoFeedCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              Icon(Icons.reply_rounded, color: cs.onSurface.withValues(alpha: 0.6), size: 22),
+              Image.asset(Images.shareIcon, height: 20, width: 20),
             ],
           ),
         ],
@@ -276,16 +301,11 @@ class _CreatorCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusLg2),
-        border: Border.all(
-          color: AppColors.border,
-        ),
+        border: Border.all(color: AppColors.border),
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: cs.outlineVariant,
-          ),
+          CircleAvatar(radius: 26, backgroundColor: cs.outlineVariant),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -354,14 +374,21 @@ class _PromoBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.themeColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       'Ad',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.themeColor),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.themeColor,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -395,7 +422,11 @@ class _PromoBanner extends StatelessWidget {
                   color: AppColors.themeColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                 ),
-                child: Icon(Icons.laptop_chromebook_rounded, color: AppColors.themeColor.withValues(alpha: 0.4), size: 40),
+                child: Icon(
+                  Icons.laptop_chromebook_rounded,
+                  color: AppColors.themeColor.withValues(alpha: 0.4),
+                  size: 40,
+                ),
               ),
             ),
           ],

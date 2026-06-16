@@ -66,32 +66,60 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
             children: [
               Positioned.fill(
                 child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(AppSizes.horizontalPadding, 8, AppSizes.horizontalPadding, 110),
+                  padding: EdgeInsets.fromLTRB(
+                    AppSizes.horizontalPadding,
+                    8,
+                    AppSizes.horizontalPadding,
+                    110,
+                  ),
                   physics: const BouncingScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _buildThumbnail(cs, isDark, course),
                       const SizedBox(height: 16),
-                      Text(
-                        course.title,
-                        style: theme.textTheme.titleLarge?.copyWith(fontSize: 22, color: cs.onSurface),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        course.description,
-                        style: TextStyle(
-                    color: cs.onSurface.withValues(alpha: 0.6),
-                    fontSize: 14,
-                    height: 1.4,
-                  ),
-                      ),
-                      const SizedBox(height: 12),
-                      CourseStatsRow(
-                        videosCount: '${course.videosCount} Video',
-                        resourcesCount: '${course.resourcesCount} Resource',
-                        isDark: isDark,
-                        cs: cs,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark ? cs.surfaceContainerLow : Colors.white,
+                          borderRadius: BorderRadius.circular(
+                            AppSizes.radiusLg,
+                          ),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              course.title,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontSize: 18,
+                                fontWeight: FontWeight.normal,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              course.description,
+                              style: TextStyle(
+                                color: cs.onSurface.withValues(alpha: 0.6),
+                                fontSize: 14,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            CourseStatsRow(
+                              videosCount: '${course.videosCount} Video',
+                              resourcesCount:
+                                  '${course.resourcesCount} Resource',
+                              isDark: isDark,
+                              cs: cs,
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 24),
                       _CourseTabContentView(course: course),
@@ -103,7 +131,11 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                 bottom: 0,
                 left: 0,
                 right: 0,
-                child: BottomEnrollmentBar(price: '\u09F3${course.price.toStringAsFixed(2)}', isDark: isDark, cs: cs),
+                child: BottomEnrollmentBar(
+                  price: '\u09F3${course.price.toStringAsFixed(2)}',
+                  isDark: isDark,
+                  cs: cs,
+                ),
               ),
             ],
           ),
@@ -112,7 +144,11 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context, ColorScheme cs, bool isDark) {
+  PreferredSizeWidget _buildAppBar(
+    BuildContext context,
+    ColorScheme cs,
+    bool isDark,
+  ) {
     return AppBar(
       leading: const Padding(
         padding: EdgeInsets.only(left: 8),
@@ -134,7 +170,10 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
               height: 184,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [cs.primary.withValues(alpha: 0.6), cs.primary.withValues(alpha: 0.2)],
+                  colors: [
+                    cs.primary.withValues(alpha: 0.6),
+                    cs.primary.withValues(alpha: 0.2),
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -144,7 +183,10 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
               top: 8,
               left: 8,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: isDark ? cs.surfaceContainerHighest : Colors.white,
                   borderRadius: BorderRadius.circular(20),
@@ -162,7 +204,9 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
             Center(
               child: CircleAvatar(
                 radius: 28,
-                backgroundColor: (isDark ? cs.surfaceContainerHighest : Colors.white).withValues(alpha: 0.9),
+                backgroundColor:
+                    (isDark ? cs.surfaceContainerHighest : Colors.white)
+                        .withValues(alpha: 0.9),
                 child: Icon(
                   Icons.play_arrow_rounded,
                   color: isDark ? Colors.white : Colors.black87,
@@ -211,7 +255,9 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
-                        color: isSelected ? AppColors.themeColor : const Color(0xFFEFEFF0),
+                        color: isSelected
+                            ? AppColors.themeColor
+                            : const Color(0xFFEFEFF0),
                         width: isSelected ? 2.5 : 1.0,
                       ),
                     ),
@@ -219,7 +265,11 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
                   child: Text(
                     _tabs[index],
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isSelected ? AppColors.themeColor : (isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.primaryText),
+                      color: isSelected
+                          ? AppColors.themeColor
+                          : (isDark
+                                ? Colors.white.withValues(alpha: 0.6)
+                                : AppColors.primaryText),
                       fontSize: 15,
                     ),
                   ),
@@ -236,7 +286,11 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
     );
   }
 
-  List<Widget> _overviewContent(bool isDark, ColorScheme cs, CourseEntity course) {
+  List<Widget> _overviewContent(
+    bool isDark,
+    ColorScheme cs,
+    CourseEntity course,
+  ) {
     return [
       InstructorProfileCard(isDark: isDark, cs: cs),
       const SizedBox(height: 16),
@@ -261,9 +315,27 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('\u2022  Basic computer skills', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), height: 1.5)),
-            Text('\u2022  No prior programming experience needed', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), height: 1.5)),
-            Text('\u2022  A computer with internet connection', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), height: 1.5)),
+            Text(
+              '\u2022  Basic computer skills',
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
+            Text(
+              '\u2022  No prior programming experience needed',
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
+            Text(
+              '\u2022  A computer with internet connection',
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
           ],
         ),
       ),
@@ -275,7 +347,13 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Lessons : 156', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), height: 1.5)),
+            Text(
+              'Lessons : 156',
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
           ],
         ),
       ),
@@ -334,13 +412,22 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                     }
                   });
                 },
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isDark ? cs.surfaceContainerHighest : const Color(0xFFF9F9F9),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    color: isDark
+                        ? cs.surfaceContainerHighest
+                        : const Color(0xFFF9F9F9),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   child: Row(
                     children: [
                       Expanded(
@@ -349,7 +436,8 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                           children: [
                             Text(
                               module.title,
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 16,
                                     color: cs.onSurface,
@@ -359,7 +447,7 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                             Text(
                               module.lessonsCount,
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 12,
                                 color: cs.onSurface.withValues(alpha: 0.6),
                                 fontWeight: FontWeight.w500,
                               ),
@@ -368,7 +456,9 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                         ),
                       ),
                       Icon(
-                        isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        isExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
                         color: cs.onSurface,
                         size: 24,
                       ),
@@ -377,14 +467,13 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                 ),
               ),
               if (isExpanded) ...[
-                Divider(
-                  height: 1,
-                  color: const Color(0xFFEFEFF0),
-                ),
+                Divider(height: 1, color: const Color(0xFFEFEFF0)),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Column(
-                    children: List.generate(module.lessons.length, (lessonIndex) {
+                    children: List.generate(module.lessons.length, (
+                      lessonIndex,
+                    ) {
                       final lesson = module.lessons[lessonIndex];
                       final isActive = _activeLessonTitle == lesson.title;
 
@@ -425,16 +514,29 @@ class _CourseDetailsSkeleton extends StatelessWidget {
       children: [
         Positioned.fill(
           child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(AppSizes.horizontalPadding, 8, AppSizes.horizontalPadding, 110),
+            padding: EdgeInsets.fromLTRB(
+              AppSizes.horizontalPadding,
+              8,
+              AppSizes.horizontalPadding,
+              110,
+            ),
             physics: const NeverScrollableScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const ShimmerWidget(width: double.infinity, height: 184, borderRadius: 16),
+                const ShimmerWidget(
+                  width: double.infinity,
+                  height: 184,
+                  borderRadius: 16,
+                ),
                 const SizedBox(height: 16),
                 const ShimmerWidget(width: 240, height: 22, borderRadius: 4),
                 const SizedBox(height: 8),
-                const ShimmerWidget(width: double.infinity, height: 14, borderRadius: 4),
+                const ShimmerWidget(
+                  width: double.infinity,
+                  height: 14,
+                  borderRadius: 4,
+                ),
                 const SizedBox(height: 4),
                 const ShimmerWidget(width: 180, height: 14, borderRadius: 4),
                 const SizedBox(height: 12),
@@ -447,15 +549,21 @@ class _CourseDetailsSkeleton extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 Row(
-                  children: List.generate(3, (i) => Expanded(
-                    child: Column(
-                      children: [
-                        ShimmerWidget(width: 60, height: 14, borderRadius: 4),
-                        const SizedBox(height: 8),
-                        Container(height: 2, color: cs.surfaceContainerHighest),
-                      ],
+                  children: List.generate(
+                    3,
+                    (i) => Expanded(
+                      child: Column(
+                        children: [
+                          ShimmerWidget(width: 60, height: 14, borderRadius: 4),
+                          const SizedBox(height: 8),
+                          Container(
+                            height: 2,
+                            color: cs.surfaceContainerHighest,
+                          ),
+                        ],
+                      ),
                     ),
-                  )),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -473,9 +581,17 @@ class _CourseDetailsSkeleton extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                ShimmerWidget(width: double.infinity, height: 14, borderRadius: 4),
+                ShimmerWidget(
+                  width: double.infinity,
+                  height: 14,
+                  borderRadius: 4,
+                ),
                 const SizedBox(height: 4),
-                ShimmerWidget(width: double.infinity, height: 14, borderRadius: 4),
+                ShimmerWidget(
+                  width: double.infinity,
+                  height: 14,
+                  borderRadius: 4,
+                ),
                 const SizedBox(height: 4),
                 ShimmerWidget(width: 140, height: 14, borderRadius: 4),
               ],
@@ -487,13 +603,19 @@ class _CourseDetailsSkeleton extends StatelessWidget {
           left: 0,
           right: 0,
           child: Container(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor),
+            padding: const EdgeInsets.fromLTRB(10, 16, 10, 24),
+            decoration: const BoxDecoration(color: Colors.transparent),
             child: Row(
               children: [
                 const ShimmerWidget(width: 100, height: 42, borderRadius: 30),
                 const SizedBox(width: 8),
-                const Expanded(child: ShimmerWidget(width: double.infinity, height: 54, borderRadius: 30)),
+                const Expanded(
+                  child: ShimmerWidget(
+                    width: double.infinity,
+                    height: 54,
+                    borderRadius: 30,
+                  ),
+                ),
               ],
             ),
           ),
@@ -508,41 +630,48 @@ class BottomEnrollmentBar extends StatelessWidget {
   final bool isDark;
   final ColorScheme cs;
 
-  const BottomEnrollmentBar({Key? key, required this.price, required this.isDark, required this.cs}) : super(key: key);
+  const BottomEnrollmentBar({
+    Key? key,
+    required this.price,
+    required this.isDark,
+    required this.cs,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-      ),
+      padding: const EdgeInsets.fromLTRB(10, 16, 10, 24),
+      decoration: const BoxDecoration(color: Colors.transparent),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            width: 78,
+            height: 48,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: AppColors.border),
             ),
             child: Text(
               price,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontSize: 26,
-                color: cs.primary,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primaryText,
               ),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            flex: 2,
             child: AuthButton(
               text: 'Enroll Now',
-              height: 54,
+              height: 48,
               borderRadius: 30,
-              onPressed: () => Navigator.pushNamed(context, AppRoutes.paymentSuccess),
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.paymentSuccess),
             ),
           ),
         ],

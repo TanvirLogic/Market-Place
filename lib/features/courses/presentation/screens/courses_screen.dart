@@ -52,8 +52,10 @@ class _CoursesScreenState extends State<CoursesScreen> {
                     children: [
                       Image.asset(Images.eduverseP, width: 113, height: 32),
                       GestureDetector(
-                        onTap: () =>
-                            Navigator.pushNamed(context, AppRoutes.notifications),
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          AppRoutes.notifications,
+                        ),
                         onLongPress: () {},
                         child: SvgPicture.asset(Images.notificationIcon),
                       ),
@@ -63,22 +65,21 @@ class _CoursesScreenState extends State<CoursesScreen> {
                   TextFormField(
                     decoration: InputDecoration(
                       hintText: 'Course Name, Author...',
-                      prefixIcon: Icon(Icons.search,
-                          color: cs.onSurface.withValues(alpha: 0.6)),
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 16),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: cs.onSurface.withValues(alpha: 0.6),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16),
                       filled: true,
                       fillColor: isDark
                           ? cs.surfaceContainerHighest
                           : Colors.white,
                       enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppSizes.radiusXl),
+                        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
                         borderSide: BorderSide(color: AppColors.border),
                       ),
                       border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppSizes.radiusXl),
+                        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
                         borderSide: BorderSide.none,
                       ),
                     ),
@@ -98,14 +99,21 @@ class _CoursesScreenState extends State<CoursesScreen> {
                         padding: const EdgeInsets.only(top: 60),
                         child: Column(
                           children: [
-                            Icon(Icons.error_outline,
-                                size: 48, color: cs.error),
+                            Icon(
+                              Icons.error_outline,
+                              size: 48,
+                              color: cs.error,
+                            ),
                             const SizedBox(height: 12),
-                            Text(provider.errorMessage!,
-                                style: TextStyle(color: cs.error)),
+                            Text(
+                              provider.errorMessage!,
+                              style: TextStyle(color: cs.error),
+                            ),
                             const SizedBox(height: 12),
                             AuthButton(
-                                text: 'Retry', onPressed: provider.refresh),
+                              text: 'Retry',
+                              onPressed: provider.refresh,
+                            ),
                           ],
                         ),
                       ),
@@ -248,7 +256,8 @@ class _MyCourseCard extends StatelessWidget {
                 child: Stack(
                   children: [
                     Container(
-                        color: AppColors.themeColor.withValues(alpha: 0.15)),
+                      color: AppColors.themeColor.withValues(alpha: 0.15),
+                    ),
                     Positioned(
                       bottom: 8,
                       left: 6,
@@ -269,8 +278,9 @@ class _MyCourseCard extends StatelessWidget {
                             level.isNotEmpty ? level : 'All Levels',
                             style: TextStyle(
                               fontSize: 9,
-                              color:
-                                  isDark ? Colors.white : AppColors.primaryText,
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.primaryText,
                             ),
                           ),
                         ],
@@ -296,8 +306,9 @@ class _MyCourseCard extends StatelessWidget {
                             isFree ? 'Free' : 'Paid',
                             style: TextStyle(
                               fontSize: 9,
-                              color:
-                                  isDark ? Colors.white : AppColors.primaryText,
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.primaryText,
                             ),
                           ),
                         ],
@@ -362,14 +373,19 @@ class _MyCourseCard extends StatelessWidget {
                       minimumSize: const Size(56, 22),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       backgroundColor: AppColors.surface,
-                      foregroundColor:
-                          isDark ? Colors.white : AppColors.primaryText,
+                      foregroundColor: isDark
+                          ? Colors.white
+                          : AppColors.primaryText,
                       elevation: 0,
                       side: const BorderSide(color: AppColors.border),
                     ),
-                    child: const Text('Continue',
-                        style: TextStyle(
-                            fontSize: 10, fontWeight: FontWeight.w500)),
+                    child: const Text(
+                      'Continue',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -451,16 +467,21 @@ class _RecommendedCard extends StatelessWidget {
                       left: 8,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(AppSizes.radiusLg2),
+                          borderRadius: BorderRadius.circular(
+                            AppSizes.radiusLg2,
+                          ),
                         ),
                         child: Text(
                           'by ${course.mentor.name}',
-                          style:
-                              TextStyle(fontSize: 12, color: AppColors.primaryText),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.primaryText,
+                          ),
                         ),
                       ),
                     ),
@@ -469,21 +490,29 @@ class _RecommendedCard extends StatelessWidget {
                       right: 8,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.9),
-                          borderRadius:
-                              BorderRadius.circular(AppSizes.radiusSm),
+                          borderRadius: BorderRadius.circular(
+                            AppSizes.radiusSm,
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.access_time,
-                                color: Color(0xFFF59E0B), size: 14),
+                            const Icon(
+                              Icons.access_time,
+                              color: Color(0xFFF59E0B),
+                              size: 14,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               _formatDate(course.updatedAt),
                               style: TextStyle(
-                                  fontSize: 12, color: AppColors.primaryText),
+                                fontSize: 12,
+                                color: AppColors.primaryText,
+                              ),
                             ),
                           ],
                         ),
@@ -522,8 +551,10 @@ class _RecommendedCard extends StatelessWidget {
                 if (course.language.isNotEmpty)
                   _svgChip(Images.language, course.language),
                 _svgChip(Images.bookNoC, course.level),
-                _svgChip(Images.dollar,
-                    course.type == 'PAID' ? 'Paid' : 'Free'),
+                _svgChip(
+                  Images.dollar,
+                  course.type == 'PAID' ? 'Paid' : 'Free',
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -559,14 +590,20 @@ class _RecommendedCard extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SvgPicture.asset(asset, width: 16, height: 16,
-            colorFilter: ColorFilter.mode(
-                isDark ? Colors.white : AppColors.themeColor,
-                BlendMode.srcIn)),
+        SvgPicture.asset(
+          asset,
+          width: 16,
+          height: 16,
+          colorFilter: ColorFilter.mode(
+            isDark ? Colors.white : AppColors.themeColor,
+            BlendMode.srcIn,
+          ),
+        ),
         const SizedBox(width: 4),
         Text(
           label,
           style: TextStyle(
+            fontWeight: .bold,
             fontSize: 13,
             color: isDark ? Colors.white : AppColors.primaryText,
           ),
