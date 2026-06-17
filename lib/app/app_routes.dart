@@ -11,7 +11,9 @@ import 'package:edtech/features/courses/presentation/screens/course_details_scre
 import 'package:edtech/features/courses/presentation/screens/enrolled_course_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/payment_success_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/upload_course_screen.dart';
+import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 import 'package:edtech/features/courses/presentation/screens/upload_video_screen.dart';
+import 'package:provider/provider.dart';
 import 'package:edtech/features/manage_module/presentation/screens/manage_module_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/password_and_security_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/payments_and_revenue_screen.dart';
@@ -90,7 +92,12 @@ class AppRoutes {
       case uploadVideoPage:
         return MaterialPageRoute(builder: (_) => const UploadVideoScreen());
       case uploadCoursePage:
-        return MaterialPageRoute(builder: (_) => const UploadCourseScreen());
+        return MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider(
+            create: (_) => CourseUploadProvider(),
+            child: const UploadCourseScreen(),
+          ),
+        );
       case courseDetails:
         return MaterialPageRoute(builder: (_) => const CourseDetailsScreen());
       case enrolledCourse:

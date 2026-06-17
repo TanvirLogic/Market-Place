@@ -61,7 +61,9 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: AppSizes.horizontalPadding),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSizes.horizontalPadding,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -84,50 +86,18 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
               ),
               const SizedBox(height: 16),
               CourseAccordion(
-                id: 'course_1',
+                id: 'course_12',
+                courseId: 14,
                 title: 'Complete Flutter Development',
                 videosCount: 25,
                 resourcesCount: 8,
                 studentsCount: 50,
-                isExpanded: _expandedCourseId == 'course_1',
+                isExpanded: _expandedCourseId == 'course_11',
                 onExpansionChanged: (expanded) =>
-                    _onExpansionChanged('course_1', expanded),
+                    _onExpansionChanged('course_11', expanded),
                 grossAmount: '৳500.00',
                 platformFee: '-৳125.00',
                 netEarnings: '+৳375.00',
-              ),
-              const SizedBox(height: 12),
-              CourseAccordion(
-                id: 'course_2',
-                title: 'Python for Data Science',
-                videosCount: 25,
-                resourcesCount: 8,
-                studentsCount: 50,
-                isExpanded: _expandedCourseId == 'course_2',
-                onExpansionChanged: (expanded) =>
-                    _onExpansionChanged('course_2', expanded),
-              ),
-              const SizedBox(height: 12),
-              CourseAccordion(
-                id: 'course_3',
-                title: 'Ad Impression Revenue',
-                videosCount: 25,
-                resourcesCount: 8,
-                studentsCount: 50,
-                isExpanded: _expandedCourseId == 'course_3',
-                onExpansionChanged: (expanded) =>
-                    _onExpansionChanged('course_3', expanded),
-              ),
-              const SizedBox(height: 12),
-              CourseAccordion(
-                id: 'course_4',
-                title: 'Ad Impression Revenue',
-                videosCount: 25,
-                resourcesCount: 8,
-                studentsCount: 50,
-                isExpanded: _expandedCourseId == 'course_4',
-                onExpansionChanged: (expanded) =>
-                    _onExpansionChanged('course_4', expanded),
               ),
               const SizedBox(height: 24),
             ],

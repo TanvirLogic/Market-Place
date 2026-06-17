@@ -8,6 +8,7 @@ import '../../../../../global/core/widgets/auth_button.dart';
 
 class CourseAccordion extends StatelessWidget {
   final String id;
+  final int courseId;
   final String title;
   final int videosCount;
   final int resourcesCount;
@@ -19,6 +20,7 @@ class CourseAccordion extends StatelessWidget {
   final String? netEarnings;
   CourseAccordion({
     required this.id,
+    required this.courseId,
     required this.title,
     required this.videosCount,
     required this.resourcesCount,
@@ -90,6 +92,7 @@ class CourseAccordion extends StatelessWidget {
           title: header,
           children: [
             ExpandedCourseContent(
+              courseId: courseId,
               grossAmount: grossAmount!,
               platformFee: platformFee,
               netEarnings: netEarnings,
@@ -161,6 +164,7 @@ class MetaBadge extends StatelessWidget {
 }
 
 class ExpandedCourseContent extends StatelessWidget {
+  final int courseId;
   final String grossAmount;
   final String? platformFee;
   final String? netEarnings;
@@ -168,6 +172,7 @@ class ExpandedCourseContent extends StatelessWidget {
   final ColorScheme cs;
   const ExpandedCourseContent({
     super.key,
+    required this.courseId,
     required this.grossAmount,
     required this.platformFee,
     required this.netEarnings,
@@ -221,7 +226,7 @@ class ExpandedCourseContent extends StatelessWidget {
         const SizedBox(height: 12),
         AuthButton(
           text: 'Manage Module',
-          onPressed: () => Navigator.pushNamed(context, AppRoutes.manageModule),
+          onPressed: () => Navigator.pushNamed(context, AppRoutes.manageModule, arguments: {'courseId': courseId}),
           height: 44,
           borderRadius: 22,
         ),

@@ -6,35 +6,62 @@ import 'package:edtech/global/core/services/toast_service.dart';
 
 class ManageModuleProvider extends ChangeNotifier {
   final int courseId;
-  int _nextModuleId = 3;
+  int _nextModuleId = 1;
   int _nextLessonId = 1;
+  bool _isLoading = true;
 
-  final List<CourseModule> _modules = [
-    CourseModule(
-      id: 1,
-      title: "Getting Started with Web Development",
-      lessons: [],
-      isExpanded: false,
-    ),
-    CourseModule(
-      id: 2,
-      title: "Getting Started with Web Development",
-      lessons: [],
-      isExpanded: false,
-    ),
-  ];
+  final List<CourseModule> _modules = [];
   bool _hasUnsavedChanges = false;
 
-  ManageModuleProvider({this.courseId = 0});
+  ManageModuleProvider({this.courseId = 0}) {
+    _fetchModules();
+  }
 
   List<CourseModule> get modules => _modules;
   bool get hasUnsavedChanges => _hasUnsavedChanges;
+  bool get isLoading => _isLoading;
 
   int get nextModuleId => _nextModuleId;
   int get nextLessonId => _nextLessonId;
 
   void incrementModuleId() => _nextModuleId++;
   void incrementLessonId() => _nextLessonId++;
+
+  Future<void> _fetchModules() async {
+    _isLoading = true;
+    notifyListeners();
+    final response = await getNetworkCaller().getRequest(
+      url: '${Urls.courseModuleUrl}?courseID=$courseId',
+    );
+    if (response.isSuccess) {
+      final data = response.responseData['data'];
+      if (data is List) {
+        _modules.clear();
+        for (final item in data) {
+          final lessons = (item['lessons'] as List?)?.map((l) {
+            return Lesson(
+              id: l['id'] as int? ?? _nextLessonId++,
+              title: l['title'] as String? ?? '',
+              duration: l['duration'] as String? ?? '0:00',
+              type: l['type'] == 'resource' ? LessonType.resource : LessonType.video,
+            );
+          }).toList() ?? [];
+          _modules.add(
+            CourseModule(
+              id: item['id'] as int? ?? _nextModuleId++,
+              title: item['title'] as String? ?? '',
+              order: item['order'] as int? ?? _modules.length,
+              courseId: item['courseId'] as int? ?? courseId,
+              lessons: lessons,
+              isExpanded: false,
+            ),
+          );
+        }
+      }
+    }
+    _isLoading = false;
+    notifyListeners();
+  }
 
   List<Map<String, dynamic>> getSerializedOrder() {
     return _modules.asMap().entries.map((entry) {
@@ -118,9 +145,12 @@ class ManageModuleProvider extends ChangeNotifier {
   }
 
   Future<bool> addModule(String title) async {
+    final nextOrder = _modules.isEmpty
+        ? 0
+        : _modules.map((m) => m.order).reduce((a, b) => a > b ? a : b) + 1;
     final response = await getNetworkCaller().postRequest(
       url: Urls.courseModuleUrl,
-      body: {'title': title, 'order': _modules.length, 'courseID': courseId},
+      body: {'title': title, 'order': nextOrder, 'courseID': courseId},
     );
     if (response.isSuccess) {
       final data = response.responseData['data'];
@@ -130,7 +160,7 @@ class ManageModuleProvider extends ChangeNotifier {
         CourseModule(
           id: moduleId,
           title: title,
-          order: _modules.length,
+          order: nextOrder,
           courseId: serverCourseId,
           lessons: [],
           isExpanded: true,

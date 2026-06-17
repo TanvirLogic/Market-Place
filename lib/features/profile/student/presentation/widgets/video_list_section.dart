@@ -90,13 +90,16 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
       }
     });
 
-    player.open(Media(video.video)).then((_) {
-      player.play();
-    }).catchError((_) {
-      if (mounted && !_isDisposed) {
-        setState(() => _hasError = true);
-      }
-    });
+    player
+        .open(Media(video.video))
+        .then((_) {
+          player.play();
+        })
+        .catchError((_) {
+          if (mounted && !_isDisposed) {
+            setState(() => _hasError = true);
+          }
+        });
   }
 
   void _stopActive() {
@@ -261,7 +264,11 @@ class _VideoCard extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (video.image.isNotEmpty)
-              CachedNetworkImage(imageUrl: video.image, fit: BoxFit.cover, errorWidget: (_, _, _) => ColoredBox(color: cs.outlineVariant))
+              CachedNetworkImage(
+                imageUrl: video.image,
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => ColoredBox(color: cs.outlineVariant),
+              )
             else
               ColoredBox(color: cs.outlineVariant),
             Container(
@@ -312,10 +319,18 @@ class _VideoCard extends StatelessWidget {
           children: [
             if (hasError)
               const Center(
-                child: Icon(Icons.videocam_off, color: Colors.white54, size: 20),
+                child: Icon(
+                  Icons.videocam_off,
+                  color: Colors.white54,
+                  size: 20,
+                ),
               )
             else if (isInitialized && videoController != null)
-              Video(controller: videoController!, fit: BoxFit.cover, controls: null)
+              Video(
+                controller: videoController!,
+                fit: BoxFit.cover,
+                controls: null,
+              )
             else
               const Center(
                 child: SizedBox(
@@ -360,7 +375,11 @@ class _VideoCard extends StatelessWidget {
                       color: Color(0x99000000),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.close, color: Colors.white, size: 12),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 12,
+                    ),
                   ),
                 ),
               ),

@@ -26,7 +26,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
   final _priceCtrl = TextEditingController();
 
   String _selectedLanguage = 'English';
-  String _selectedLevel = 'BEGINNER';
+  String _selectedLevel = 'Beginner';
   String _courseType = 'FREE';
 
   @override

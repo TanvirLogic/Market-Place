@@ -33,9 +33,20 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
     return Consumer<CourseFeedProvider>(
       builder: (context, provider, _) {
-        return RefreshIndicator(
-          onRefresh: provider.refresh,
-          child: SingleChildScrollView(
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollEndNotification &&
+                notification.metrics.pixels >=
+                    notification.metrics.maxScrollExtent - 300 &&
+                provider.hasNextPage &&
+                !provider.isLoadingMore) {
+              provider.fetchMore();
+            }
+            return false;
+          },
+          child: RefreshIndicator(
+            onRefresh: provider.refresh,
+            child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(
               left: AppSizes.horizontalPadding,
@@ -150,15 +161,27 @@ class _CoursesScreenState extends State<CoursesScreen> {
                           ),
                         ),
                       ),
+                      if (provider.isLoadingMore)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 12, bottom: 24),
+                          child: Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        ),
                     ],
                   ],
                 ],
               ),
             ),
           ),
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
   }
 
   List<Widget> _buildMyCourses(
@@ -603,7 +626,7 @@ class _RecommendedCard extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            fontWeight: .bold,
+            fontWeight: FontWeight.bold,
             fontSize: 13,
             color: isDark ? Colors.white : AppColors.primaryText,
           ),
