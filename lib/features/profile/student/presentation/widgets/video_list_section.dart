@@ -1,7 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import '../../data/entities/user_profile_entity.dart';
 import 'video_player_screen.dart';
 
@@ -34,6 +35,44 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
   bool _isDisposed = false;
   bool _hasError = false;
   bool _showControls = true;
+
+  final Map<int, Uint8List> _thumbnailCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _generateThumbnails();
+  }
+
+  @override
+  void didUpdateWidget(VideosHorizontalListView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videos != widget.videos) {
+      _thumbnailCache.clear();
+      _generateThumbnails();
+    }
+  }
+
+  Future<void> _generateThumbnails() async {
+    for (int i = 0; i < widget.videos.length; i++) {
+      if (_thumbnailCache.containsKey(i)) continue;
+      if (!_isVideoUrl(widget.videos[i].video)) continue;
+
+      try {
+        final bytes = await VideoThumbnail.thumbnailData(
+          video: widget.videos[i].video,
+          imageFormat: ImageFormat.JPEG,
+          maxWidth: 218,
+          quality: 80,
+        );
+        if (bytes != null && mounted) {
+          _thumbnailCache[i] = bytes;
+          setState(() {});
+        }
+      } catch (_) {
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -174,8 +213,9 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
                 SizedBox(
                   width: 109,
                   height: 71,
-                  child: _VideoCard(
+                    child: _VideoCard(
                     video: video,
+                    thumbnailBytes: _thumbnailCache[index],
                     isActive: isActive,
                     isInitialized: _isInitialized,
                     isPlaying: _isPlaying,
@@ -215,6 +255,7 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
 
 class _VideoCard extends StatelessWidget {
   final ProfileVideo video;
+  final Uint8List? thumbnailBytes;
   final bool isActive;
   final bool isInitialized;
   final bool isPlaying;
@@ -229,6 +270,7 @@ class _VideoCard extends StatelessWidget {
 
   const _VideoCard({
     required this.video,
+    this.thumbnailBytes,
     required this.isActive,
     required this.isInitialized,
     required this.isPlaying,
@@ -263,27 +305,27 @@ class _VideoCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (video.image.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: video.image,
+            if (thumbnailBytes != null)
+              Image.memory(
+                thumbnailBytes!,
                 fit: BoxFit.cover,
-                errorWidget: (_, _, _) => ColoredBox(color: cs.outlineVariant),
+                width: double.infinity,
+                height: double.infinity,
               )
             else
-              ColoredBox(color: cs.outlineVariant),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.1),
-                    Colors.black.withValues(alpha: 0.6),
-                  ],
-                  stops: const [0.4, 1.0],
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.1),
+                      Colors.black.withValues(alpha: 0.6),
+                    ],
+                    stops: const [0.4, 1.0],
+                  ),
                 ),
               ),
-            ),
             Center(
               child: Container(
                 width: 28,
