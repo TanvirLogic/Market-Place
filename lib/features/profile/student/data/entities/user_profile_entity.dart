@@ -21,21 +21,23 @@ class ProfileVideo {
   final String video;
   final String title;
 
-  const ProfileVideo({required this.image, required this.video, required this.title});
+  const ProfileVideo({this.image = '', required this.video, required this.title});
 }
 
 /// A single course item from the profile API response.
 class ProfileCourse {
+  final int id;
   final String image;
   final String title;
   final String by;
   final String progress;
 
   const ProfileCourse({
+    required this.id,
     required this.image,
     required this.title,
     required this.by,
-    required this.progress,
+    this.progress = '',
   });
 }
 

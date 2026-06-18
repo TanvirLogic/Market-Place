@@ -26,6 +26,7 @@ class NetworkCaller {
   }) async {
     try {
       Uri uri = Uri.parse(url);
+      AppLogger.i('→ [GET] $url');
       http.Response response = await http.get(uri, headers: headers);
       return _processResponse(
         response,
@@ -49,6 +50,8 @@ class NetworkCaller {
   }) async {
     try {
       Uri uri = Uri.parse(url);
+      AppLogger.i('→ [POST] $url');
+      if (body != null) AppLogger.i('Body: ${jsonEncode(body)}');
       http.Response response = await http.post(
         uri,
         headers: headers ?? {'content-type': 'application/json'},
@@ -77,6 +80,8 @@ class NetworkCaller {
   }) async {
     try {
       Uri uri = Uri.parse(url);
+      AppLogger.i('→ [PUT] $url');
+      if (body != null) AppLogger.i('Body: ${jsonEncode(body)}');
       http.Response response = await http.put(
         uri,
         headers: headers ?? {'content-type': 'application/json'},
@@ -105,6 +110,8 @@ class NetworkCaller {
   }) async {
     try {
       Uri uri = Uri.parse(url);
+      AppLogger.i('→ [DELETE] $url');
+      if (body != null) AppLogger.i('Body: ${jsonEncode(body)}');
       http.Response response = await http.delete(
         uri,
         headers: headers ?? {'content-type': 'application/json'},
@@ -136,6 +143,7 @@ class NetworkCaller {
     final dynamic decodedBody = _tryDecode(response.body);
 
     AppLogger.i('[$method] ${uri.path} → $statusCode');
+    if (body != null) AppLogger.i('Request body: ${jsonEncode(body)}');
     AppLogger.i('Response: ${_truncate(decodedBody)}');
 
     if (statusCode == 200 || statusCode == 201) {
@@ -215,6 +223,8 @@ class NetworkCaller {
 
     final retryDecoded = _tryDecode(retryResponse.body);
     AppLogger.i('Retry [$method] ${uri.path} → ${retryResponse.statusCode}');
+    if (body != null) AppLogger.i('Retry body: ${jsonEncode(body)}');
+    AppLogger.i('Retry response: ${_truncate(retryDecoded)}');
 
     if (retryResponse.statusCode == 200 || retryResponse.statusCode == 201) {
       return NetworkResponse(

@@ -22,6 +22,7 @@ class ManageModuleList extends StatelessWidget {
   final void Function(CourseModule module, int oldLessonIndex, int newLessonIndex) onReorderLesson;
   final Future<void> Function(CourseModule module, int lessonIndex, String newName) onRenameLesson;
   final Future<bool> Function(CourseModule module, int lessonIndex) onDeleteLesson;
+  final void Function(CourseModule module, int lessonIndex) onEditLesson;
 
   const ManageModuleList({
     super.key,
@@ -41,6 +42,7 @@ class ManageModuleList extends StatelessWidget {
     required this.onReorderLesson,
     required this.onRenameLesson,
     required this.onDeleteLesson,
+    required this.onEditLesson,
   });
 
   @override
@@ -107,6 +109,7 @@ class ManageModuleList extends StatelessWidget {
                   onReorderLesson: (oldLessonIndex, newLessonIndex) => onReorderLesson(module, oldLessonIndex, newLessonIndex),
                   onRenameLesson: (lessonIndex, newName) => onRenameLesson(module, lessonIndex, newName),
                   onDeleteLesson: (lessonIndex) => onDeleteLesson(module, lessonIndex),
+                  onEditLesson: (lessonIndex) => onEditLesson(module, lessonIndex),
                 ),
               ),
             ),

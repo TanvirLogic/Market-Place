@@ -18,6 +18,7 @@ class ModuleCard extends StatelessWidget {
   final void Function(int, int) onReorderLesson;
   final void Function(int, String) onRenameLesson;
   final Future<bool> Function(int) onDeleteLesson;
+  final void Function(int) onEditLesson;
 
   final ValueNotifier<int>? resetNotifier;
 
@@ -35,6 +36,7 @@ class ModuleCard extends StatelessWidget {
     required this.onReorderLesson,
     required this.onRenameLesson,
     required this.onDeleteLesson,
+    required this.onEditLesson,
     this.resetNotifier,
   });
 
@@ -149,6 +151,7 @@ class ModuleCard extends StatelessWidget {
                               onDeleteLesson: onDeleteLesson,
                               onRenameLesson: onRenameLesson,
                               onShowRenameDialog: onShowRenameDialog,
+                              onEditLesson: onEditLesson,
                             ),
                           ),
                         );
@@ -202,6 +205,7 @@ class _LessonSwipeRow extends StatefulWidget {
   final Future<bool> Function(int) onDeleteLesson;
   final void Function(int, String) onRenameLesson;
   final void Function(String, ValueChanged<String>) onShowRenameDialog;
+  final void Function(int) onEditLesson;
 
   const _LessonSwipeRow({
     required this.lesson,
@@ -212,6 +216,7 @@ class _LessonSwipeRow extends StatefulWidget {
     required this.onDeleteLesson,
     required this.onRenameLesson,
     required this.onShowRenameDialog,
+    required this.onEditLesson,
   });
 
   @override
@@ -266,10 +271,7 @@ class _LessonSwipeRowState extends State<_LessonSwipeRow> {
         }
         return false;
       },
-      onEdit: () => widget.onShowRenameDialog(
-        lesson.title,
-        (newName) => widget.onRenameLesson(lessonIndex, newName),
-      ),
+      onEdit: () => widget.onEditLesson(widget.lessonIndex),
       child: ListenableBuilder(
         listenable: _revealNotifier,
         builder: (context, _) {

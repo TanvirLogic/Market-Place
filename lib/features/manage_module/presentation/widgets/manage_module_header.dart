@@ -8,12 +8,14 @@ class ManageModuleHeader extends StatelessWidget {
   final ColorScheme cs;
   final Color iconBg;
   final VoidCallback onEditCourse;
+  final String? thumbnailUrl;
 
   const ManageModuleHeader({
     super.key,
     required this.cs,
     required this.iconBg,
     required this.onEditCourse,
+    this.thumbnailUrl,
   });
 
   @override
@@ -24,11 +26,14 @@ class ManageModuleHeader extends StatelessWidget {
         SizedBox(
           height: 195,
           width: double.infinity,
-          child: CachedNetworkImage(
-            imageUrl:
-                'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe',
-            fit: BoxFit.cover,
-          ),
+          child: thumbnailUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: thumbnailUrl!,
+                  fit: BoxFit.cover,
+                )
+              : Container(
+                  color: cs.surfaceContainerHighest,
+                ),
         ),
         Container(
           height: 195,

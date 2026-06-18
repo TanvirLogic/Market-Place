@@ -106,6 +106,9 @@ class _ManageModuleEditModuleSheetState
                 (_, {required currentLength, required isFocused, maxLength}) =>
                     null,
             autofocus: true,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) =>
+                FocusManager.instance.primaryFocus?.unfocus(),
             style: TextStyle(color: cs.onSurface),
             decoration: InputDecoration(
               hintText: 'Enter module title',

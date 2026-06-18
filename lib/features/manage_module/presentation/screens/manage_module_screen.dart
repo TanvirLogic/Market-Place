@@ -11,6 +11,7 @@ import 'package:edtech/features/manage_module/presentation/widgets/manage_module
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_course_sheet.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_add_module_sheet.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_module_sheet.dart';
+import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_lesson_sheet.dart';
 
 class ManageModuleScreen extends StatelessWidget {
   final int courseId;
@@ -50,6 +51,14 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
         content: TextField(
           controller: controller,
           autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) {
+            final newName = controller.text.trim();
+            if (newName.isNotEmpty) {
+              onSaved(newName);
+              Navigator.pop(context);
+            }
+          },
           decoration: const InputDecoration(hintText: 'Enter new name'),
         ),
         actions: [
@@ -86,7 +95,9 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
           body: Stack(
             children: [
               Positioned.fill(
-                child: SingleChildScrollView(
+                child: RefreshIndicator(
+                  onRefresh: provider.refresh,
+                  child: SingleChildScrollView(
                   padding: const EdgeInsets.only(bottom: 100),
                   physics: const BouncingScrollPhysics(),
                   child: Column(
@@ -95,14 +106,28 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                       ManageModuleHeader(
                         cs: cs,
                         iconBg: iconBg,
+                        thumbnailUrl: provider.courseThumbnailUrl,
                         onEditCourse: () => ManageModuleEditCourseSheet.show(
                           context,
-                          onSave: () {},
+                          courseId: provider.courseId,
+                          onSave: provider.updateCourse,
                         ),
                       ),
-                      const ManageModuleMeta(),
-                      const ManageModuleDescription(title: "Description"),
-                      const ManageModuleDescription(title: "Requirements"),
+                      ManageModuleMeta(
+                        title: provider.courseTitle,
+                        shortDescription: provider.courseShortDescription,
+                        language: provider.courseLanguage,
+                        level: provider.courseLevel,
+                        type: provider.courseType,
+                      ),
+                      ManageModuleDescription(
+                        title: "Description",
+                        text: provider.courseDescription,
+                      ),
+                      ManageModuleDescription(
+                        title: "Requirements",
+                        text: provider.courseRequirements,
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0),
                         child: Divider(
@@ -197,31 +222,48 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                         onAddVideo: (index) => ManageModuleAddLessonSheet.show(
                           context,
                           lessonType: LessonType.video,
-                          onAddLesson: (title) => provider.addLessonToModule(
-                            index,
-                            LessonType.video,
-                            customTitle: title,
-                          ),
+                          moduleId: provider.modules[index].id,
+                          courseId: provider.courseId,
+                          onAddLesson: (title, file, onProgress) =>
+                              provider.addVideoLesson(
+                                index,
+                                title,
+                                file,
+                                onProgress: onProgress,
+                              ),
                         ),
                         onAddResource: (index) =>
                             ManageModuleAddLessonSheet.show(
                               context,
                               lessonType: LessonType.resource,
-                              onAddLesson: (title) =>
-                                  provider.addLessonToModule(
+                              moduleId: provider.modules[index].id,
+                              courseId: provider.courseId,
+                              onAddLesson: (title, file, _) =>
+                                  provider.addResourceLesson(
                                     index,
-                                    LessonType.resource,
-                                    customTitle: title,
+                                    title,
+                                    file,
                                   ),
                             ),
                         onReorderLesson: provider.reorderLesson,
                         onRenameLesson: provider.renameLesson,
                         onDeleteLesson: provider.deleteLesson,
+                        onEditLesson: (module, lessonIndex) =>
+                            ManageModuleEditLessonSheet.show(
+                              context,
+                              lesson: module.lessons[lessonIndex],
+                              onSave: (title) => provider.renameLesson(
+                                module,
+                                lessonIndex,
+                                title,
+                              ),
+                            ),
                       ),
                     ],
                   ),
                 ),
               ),
+            ),
               Positioned(
                 bottom: 0,
                 left: 0,

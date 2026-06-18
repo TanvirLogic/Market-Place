@@ -3,7 +3,20 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:edtech/global/core/constants/images/images.dart';
 
 class ManageModuleMeta extends StatelessWidget {
-  const ManageModuleMeta({super.key});
+  final String title;
+  final String shortDescription;
+  final String language;
+  final String level;
+  final String type;
+
+  const ManageModuleMeta({
+    super.key,
+    required this.title,
+    required this.shortDescription,
+    required this.language,
+    required this.level,
+    required this.type,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -14,7 +27,7 @@ class ManageModuleMeta extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "App Development with flutter & AI",
+            title,
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w600,
@@ -23,7 +36,7 @@ class ManageModuleMeta extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            "With 70 live classes, you'll learn everything from the very basics to advanced levels of app development!",
+            shortDescription,
             style: TextStyle(
               fontSize: 13,
               color: cs.onSurface.withValues(alpha: 0.6),
@@ -33,11 +46,11 @@ class ManageModuleMeta extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              _MetaTag(assetPath: Images.languageIcon, label: "Bangla"),
+              _MetaTag(assetPath: Images.languageIcon, label: language),
               const SizedBox(width: 12),
-              _MetaTag(assetPath: Images.bookNoC, label: "Advanced"),
+              _MetaTag(assetPath: Images.bookNoC, label: level),
               const SizedBox(width: 12),
-              _MetaTag(assetPath: Images.dollar, label: "Paid"),
+              _MetaTag(assetPath: Images.dollar, label: type),
             ],
           ),
         ],

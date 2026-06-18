@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 
 class ManageModuleDescription extends StatelessWidget {
   final String title;
+  final String text;
 
-  const ManageModuleDescription({super.key, required this.title});
+  const ManageModuleDescription({
+    super.key,
+    required this.title,
+    required this.text,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -22,26 +27,25 @@ class ManageModuleDescription extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          RichText(
-            text: TextSpan(
-              text:
-                  "Passionate educator with over a decade of industry experience. Helping aspiring ",
-              style: TextStyle(
-                fontSize: 13,
-                color: cs.onSurface.withValues(alpha: 0.6),
-                height: 1.4,
-              ),
-              children: [
-                TextSpan(
-                  text: "See More...",
+          text.isNotEmpty
+              ? Text(
+                  text,
                   style: TextStyle(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    height: 1.4,
+                  ),
+                )
+              : RichText(
+                  text: TextSpan(
+                    text: "No $title provided",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onSurface.withValues(alpha: 0.4),
+                      height: 1.4,
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
         ],
       ),
     );

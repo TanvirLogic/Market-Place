@@ -37,7 +37,6 @@ class UserProfileModel extends UserProfileEntity {
         (json['videos'] as List<dynamic>?)
             ?.map(
               (v) => ProfileVideo(
-                image: v['image']?.toString() ?? '',
                 video: v['video']?.toString() ?? '',
                 title: v['title']?.toString() ?? '',
               ),
@@ -50,10 +49,12 @@ class UserProfileModel extends UserProfileEntity {
         (json['courses'] as List<dynamic>?)
             ?.map(
               (c) => ProfileCourse(
+                id: c['id'] is int
+                    ? c['id'] as int
+                    : int.tryParse(c['id']?.toString() ?? '0') ?? 0,
                 image: c['image']?.toString() ?? '',
                 title: c['title']?.toString() ?? '',
                 by: c['by']?.toString() ?? '',
-                progress: c['progress']?.toString() ?? '',
               ),
             )
             .toList() ??

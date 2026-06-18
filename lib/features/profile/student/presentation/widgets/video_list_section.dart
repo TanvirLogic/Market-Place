@@ -213,7 +213,7 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
                 SizedBox(
                   width: 109,
                   height: 71,
-                    child: _VideoCard(
+                  child: _VideoCard(
                     video: video,
                     thumbnailBytes: _thumbnailCache[index],
                     isActive: isActive,
@@ -326,6 +326,19 @@ class _VideoCard extends StatelessWidget {
                   ),
                 ),
               ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.4),
+                  ],
+                  stops: const [0.6, 1.0],
+                ),
+              ),
+            ),
             Center(
               child: Container(
                 width: 28,

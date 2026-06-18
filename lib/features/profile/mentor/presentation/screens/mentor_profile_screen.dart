@@ -74,14 +74,18 @@ class _MentorProfileScreenState extends State<MentorProfileScreen> {
                     Icon(
                       Icons.cloud_off,
                       size: 48,
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       ToastService.friendlyMessage(provider.errorMessage!),
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.6),
                         fontSize: 14,
                       ),
                     ),
@@ -103,7 +107,10 @@ class _MentorProfileScreenState extends State<MentorProfileScreen> {
           );
         }
 
-        return _MentorProfileBody(profile: provider.profile!, isOwnProfile: widget.isOwnProfile);
+        return _MentorProfileBody(
+          profile: provider.profile!,
+          isOwnProfile: widget.isOwnProfile,
+        );
       },
     );
   }
@@ -129,23 +136,32 @@ class _MentorProfileBody extends StatelessWidget {
         onRefresh: () => context.read<MentorProfileProvider>().fetchProfile(),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          children: [
-            // ── Section 1: Hero banner (edge-to-edge, no horizontal padding) ──
+          child: Column(
+            children: [
+              // ── Section 1: Hero banner (edge-to-edge, no horizontal padding) ──
               MentorHeroBanner(
                 coverUrl: profile.coverUrl,
                 avatarUrl: profile.avatarUrl,
                 isOwnProfile: isOwnProfile,
-                onAvatarTap: isOwnProfile ? () => _showAvatarOptions(context, profile) : null,
-                onCoverTap: isOwnProfile ? () => _showCoverOptions(context, profile) : null,
+                onAvatarTap: isOwnProfile
+                    ? () => _showAvatarOptions(context, profile)
+                    : null,
+                onCoverTap: isOwnProfile
+                    ? () => _showCoverOptions(context, profile)
+                    : null,
                 onEdit: isOwnProfile
-                    ? () => Navigator.pushNamed(context, AppRoutes.editProfilePage)
+                    ? () => Navigator.pushNamed(
+                        context,
+                        AppRoutes.editProfilePage,
+                      )
                     : null,
               ),
               const SizedBox(height: 45), // 12px between sections
               // ── Remaining content with 16px horizontal padding ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSizes.horizontalPadding),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSizes.horizontalPadding,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -181,7 +197,9 @@ class _MentorProfileBody extends StatelessWidget {
                       Text(
                         profile.bio!,
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                           height: 1.4,
@@ -191,7 +209,9 @@ class _MentorProfileBody extends StatelessWidget {
                       Text(
                         "Tell others about your skills, interests, experiences and what you're currently learning.",
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.4),
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
@@ -207,22 +227,22 @@ class _MentorProfileBody extends StatelessWidget {
                     ],
                     const SizedBox(height: 12), // 12px between sections
                     // ── Section 6: Videos ──
-                    const SectionHeader(
-                      title: 'Videos',
-                    ),
+                    const SectionHeader(title: 'Videos'),
                     VideosHorizontalListView(videos: profile.videos),
-                    const SizedBox(height: 12), // 12px between sections
+                    // const SizedBox(height: 12), // 12px between sections
                     // ── Section 7: Completed Courses ──
-                    const SectionHeader(
-                      title: 'Completed Courses',
-                    ),
+                    const SectionHeader(title: 'Featured Courses'),
                     CompletedCoursesVerticalListView(
                       courses: profile.courses,
                       isMentorProfile: true,
                       isOwnProfile: isOwnProfile,
                       onActionPressed: (course) {
                         if (isOwnProfile) {
-                          Navigator.pushNamed(context, AppRoutes.manageModule);
+                          Navigator.pushNamed(
+                            context,
+                            AppRoutes.manageModule,
+                            arguments: {'courseId': course.id},
+                          );
                         } else {
                           Navigator.pushNamed(context, AppRoutes.courseDetails);
                         }

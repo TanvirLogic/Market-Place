@@ -7,13 +7,19 @@ import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 
 class ManageModuleEditCourseSheet extends StatefulWidget {
-  final VoidCallback onSave;
+  final int courseId;
+  final Future<bool> Function(Map<String, dynamic> body) onSave;
 
-  const ManageModuleEditCourseSheet({super.key, required this.onSave});
+  const ManageModuleEditCourseSheet({
+    super.key,
+    required this.courseId,
+    required this.onSave,
+  });
 
   static Future<void> show(
     BuildContext context, {
-    required VoidCallback onSave,
+    required int courseId,
+    required Future<bool> Function(Map<String, dynamic> body) onSave,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -24,7 +30,10 @@ class ManageModuleEditCourseSheet extends StatefulWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => ManageModuleEditCourseSheet(onSave: onSave),
+      builder: (_) => ManageModuleEditCourseSheet(
+        courseId: courseId,
+        onSave: onSave,
+      ),
     );
   }
 
@@ -43,6 +52,7 @@ class _ManageModuleEditCourseSheetState
   String _language = 'English';
   String _level = 'BEGINNER';
   String _type = 'FREE';
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -52,6 +62,55 @@ class _ManageModuleEditCourseSheetState
     _reqCtrl.dispose();
     _priceCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSave() async {
+    final body = <String, dynamic>{
+      'courseId': widget.courseId,
+    };
+
+    if (_titleCtrl.text.trim().isNotEmpty) {
+      body['title'] = _titleCtrl.text.trim();
+    }
+    if (_shortDescCtrl.text.trim().isNotEmpty) {
+      body['shortDescription'] = _shortDescCtrl.text.trim();
+    }
+    if (_descCtrl.text.trim().isNotEmpty) {
+      body['description'] = _descCtrl.text.trim();
+    }
+    if (_reqCtrl.text.trim().isNotEmpty) {
+      body['requirements'] = _reqCtrl.text.trim();
+    }
+    body['language'] = _language;
+    body['level'] = _level;
+    body['type'] = _type;
+    final price = int.tryParse(_priceCtrl.text.trim());
+    body['price'] = _type == 'FREE' ? 0 : (price ?? 0);
+
+    final uploadProvider = context.read<CourseUploadProvider>();
+    final thumbnail = uploadProvider.thumbnailFile;
+    final video = uploadProvider.videoFile;
+
+    if (thumbnail != null || video != null) {
+      final urls = await uploadProvider.uploadEditAssets(
+        thumbnail: thumbnail,
+        video: video,
+      );
+      if (urls['thumbnailUrl'] != null) {
+        body['thumbnailUrl'] = urls['thumbnailUrl'];
+      }
+      if (urls['introVideoUrl'] != null) {
+        body['introVideoUrl'] = urls['introVideoUrl'];
+      }
+    }
+
+    setState(() => _saving = true);
+    final success = await widget.onSave(body);
+    setState(() => _saving = false);
+
+    if (success && mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -151,7 +210,30 @@ class _ManageModuleEditCourseSheetState
                     builder: (context, provider, _) {
                       final name = provider.thumbnailFile?.name;
                       return InkWell(
-                        onTap: () => provider.pickThumbnail(),
+                        onTap: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Replace Thumbnail'),
+                              content: const Text(
+                                'Existing thumbnail will be deleted. Continue?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Okay'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            provider.pickThumbnail();
+                          }
+                        },
                         borderRadius:
                             BorderRadius.circular(AppSizes.radiusDef),
                         child: Ink(
@@ -212,7 +294,30 @@ class _ManageModuleEditCourseSheetState
                       return UploadZone(
                         cs: cs,
                         isDark: isDark,
-                        onTap: () => provider.pickVideo(),
+                        onTap: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Replace Video'),
+                              content: const Text(
+                                'Existing intro video will be deleted. Continue?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Okay'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            provider.pickVideo();
+                          }
+                        },
                         selectedFileName: provider.videoFile?.name,
                       );
                     },
@@ -266,10 +371,8 @@ class _ManageModuleEditCourseSheetState
           AuthButton(
             text: 'Save Changes',
             borderRadius: 24,
-            onPressed: () {
-              widget.onSave();
-              Navigator.of(context).pop();
-            },
+            isLoading: _saving,
+            onPressed: _saving ? null : _handleSave,
           ),
           const SizedBox(height: 16),
         ],
@@ -391,7 +494,7 @@ class _ManageModuleEditCourseSheetState
                   : cs.onSurface.withValues(alpha: 0.5),
               size: 22,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Text(
               tileType,
               style: TextStyle(

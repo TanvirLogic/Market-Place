@@ -150,6 +150,70 @@ class CourseUploadProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<Map<String, String?>> uploadEditAssets({
+    XFile? thumbnail,
+    XFile? video,
+  }) async {
+    if (thumbnail == null && video == null) return {};
+
+    final body = <String, dynamic>{};
+    if (thumbnail != null) {
+      body['thumbnailFilename'] = thumbnail.name;
+      body['thumbnailContentType'] = _inferImageContentType(thumbnail.name);
+    }
+    if (video != null) {
+      body['videoFilename'] = video.name;
+      body['videoContentType'] = _inferVideoContentType(video.name);
+    }
+
+    final urlsResponse = await getNetworkCaller().postRequest(
+      url: Urls.courseAssetsUploadUrl,
+      body: body,
+    );
+
+    if (!urlsResponse.isSuccess) {
+      ToastService.showError('Failed to get upload URL');
+      return {};
+    }
+
+    final raw = urlsResponse.responseData;
+    final wrapper = raw is Map ? raw['data'] : null;
+    final innerData = wrapper is Map ? wrapper['data'] ?? wrapper : wrapper;
+    if (innerData is! Map<String, dynamic>) return {};
+
+    final result = <String, String?>{};
+
+    if (thumbnail != null) {
+      final info = innerData['thumbnail'] as Map<String, dynamic>?;
+      final uploadUrl = info?['uploadUrl'] as String?;
+      final fileUrl = info?['fileUrl'] as String?;
+      if (uploadUrl != null && fileUrl != null) {
+        await _uploadToS3(
+          uploadUrl,
+          thumbnail,
+          _inferImageContentType(thumbnail.name),
+        );
+        result['thumbnailUrl'] = fileUrl;
+      }
+    }
+
+    if (video != null) {
+      final info = innerData['video'] as Map<String, dynamic>?;
+      final uploadUrl = info?['uploadUrl'] as String?;
+      final fileUrl = info?['fileUrl'] as String?;
+      if (uploadUrl != null && fileUrl != null) {
+        await _uploadToS3(
+          uploadUrl,
+          video,
+          _inferVideoContentType(video.name),
+        );
+        result['introVideoUrl'] = fileUrl;
+      }
+    }
+
+    return result;
+  }
+
   bool _checkCancelled() {
     if (_isCancelled) {
       _step = UploadStep.idle;

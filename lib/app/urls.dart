@@ -48,7 +48,11 @@ class Urls {
   static const String manageModulesUrl =
       '$_baseUrl/courses'; // append /{id}/modules
   static const String courseModuleUrl = '$_baseUrl/course/module';
+  static const String courseModuleUploadUrl =
+      '$_baseUrl/course/module/lesson/upload';
+  static const String courseModuleLessonUrl = '$_baseUrl/course/module/lesson';
   static const String courseLessonUrl = '$_baseUrl/course/lesson';
+  static const String updateCourseUrl = '$_baseUrl/course';
 
   // ──────────────────────────────────────────────
   // Video Post Endpoints

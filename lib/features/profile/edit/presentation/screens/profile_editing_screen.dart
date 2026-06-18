@@ -357,7 +357,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           final isLoading = provider.isLoading ||
               context.watch<MentorProfileProvider>().isLoading;
 
-          return SingleChildScrollView(
+          return GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSizes.horizontalPadding,
@@ -527,7 +529,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ],
                 ),
               ),
-            );
+            ),
+          );
           },
         ),
       );

@@ -78,10 +78,6 @@ class _HubScreenState extends State<HubScreen> {
         context.watch<StudentProfileProvider>().profile ??
         context.watch<MentorProfileProvider>().profile;
 
-    if (profile == null && !_fetchTriggered) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _fetchProfile());
-    }
-
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.only(
