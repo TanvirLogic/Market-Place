@@ -208,7 +208,7 @@ class _AdsManagerScreenState extends State<AdsManagerScreen> {
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),
         border: Border.all(
-          color: AppColors.border,
+          color: isDark ? cs.outlineVariant : AppColors.border,
         ),
       ),
       child: Row(
@@ -297,7 +297,7 @@ class _AdCampaignCard extends StatelessWidget {
             color: isDark ? cs.surfaceContainerLow : Colors.white,
             borderRadius: BorderRadius.circular(AppSizes.radiusMd),
             border: Border.all(
-              color: AppColors.border,
+              color: isDark ? cs.outlineVariant : AppColors.border,
             ),
           ),
           child: Column(
@@ -347,10 +347,14 @@ class _AdCampaignCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF5FB),
+                    color: isDark
+                        ? AppColors.themeColor.withValues(alpha: 0.18)
+                        : const Color(0xFFEFF5FB),
                     borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                     border: Border.all(
-                      color: const Color(0xFFACCDEC),
+                      color: isDark
+                          ? AppColors.themeColor.withValues(alpha: 0.4)
+                          : const Color(0xFFACCDEC),
                       width: 0.5,
                     ),
                   ),

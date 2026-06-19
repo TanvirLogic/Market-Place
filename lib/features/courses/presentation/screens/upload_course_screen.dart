@@ -159,6 +159,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                         decoration: _inputDecoration(
                           cs,
                           'Enter your description',
+                          borderRadius: 16,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -174,6 +175,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                         decoration: _inputDecoration(
                           cs,
                           'Enter your requirements',
+                          borderRadius: 16,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -353,7 +355,11 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
     );
   }
 
-  InputDecoration _inputDecoration(ColorScheme cs, String hint) {
+  InputDecoration _inputDecoration(
+    ColorScheme cs,
+    String hint, {
+    double borderRadius = AppSizes.radiusDef,
+  }) {
     final isDark = cs.brightness == Brightness.dark;
     return InputDecoration(
       hintText: hint,
@@ -363,22 +369,22 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+        borderRadius: BorderRadius.circular(borderRadius),
         borderSide: BorderSide(
           color: isDark ? cs.outlineVariant : AppColors.border,
           width: 1,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+        borderRadius: BorderRadius.circular(borderRadius),
         borderSide: BorderSide(color: AppColors.themeColor, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+        borderRadius: BorderRadius.circular(borderRadius),
         borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+        borderRadius: BorderRadius.circular(borderRadius),
         borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
       ),
     );
@@ -436,7 +442,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
         filled: true,
         fillColor: isDark ? cs.surfaceContainerHighest : Colors.white,
       ),
-      dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      dropdownColor: isDark ? cs.surfaceContainerLow : Colors.white,
     );
   }
 

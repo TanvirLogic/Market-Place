@@ -1,5 +1,4 @@
 import 'package:edtech/features/profile/avatar/presentation/widgets/avatar_options_bottom_sheet.dart';
-import 'package:edtech/features/profile/avatar/presentation/widgets/custom_crop_screen.dart';
 import 'package:edtech/features/profile/avatar/presentation/widgets/cover_reposition_screen.dart';
 import 'package:edtech/features/profile/mentor/presentation/widgets/mentor_hero_banner.dart';
 import 'package:edtech/features/profile/mentor/presentation/widgets/mentor_identity_header.dart';
@@ -11,9 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:edtech/features/profile/avatar/providers/avatar_upload_provider.dart';
 import 'package:edtech/features/profile/avatar/providers/cover_upload_provider.dart';
+import 'package:edtech/features/profile/shared/widgets/loading_app_bar.dart';
+import 'package:edtech/features/profile/shared/helpers/profile_helpers.dart';
+import 'package:edtech/features/profile/avatar/providers/avatar_upload_provider.dart';
 import '../../../student/presentation/widgets/completed_courses_list.dart';
 import '../../../student/presentation/widgets/section_header.dart';
 import '../../../student/presentation/widgets/skill_badges_row.dart';
@@ -65,7 +65,7 @@ class _MentorProfileScreenState extends State<MentorProfileScreen> {
         if (provider.profile == null) {
           if (provider.errorMessage != null) {
             return Scaffold(
-              appBar: const _LoadingAppBar(),
+              appBar: const LoadingAppBar(),
               body: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
@@ -102,7 +102,7 @@ class _MentorProfileScreenState extends State<MentorProfileScreen> {
           }
 
           return Scaffold(
-            appBar: const _LoadingAppBar(),
+            appBar: const LoadingAppBar(),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
@@ -144,7 +144,7 @@ class _MentorProfileBody extends StatelessWidget {
                 avatarUrl: profile.avatarUrl,
                 isOwnProfile: isOwnProfile,
                 onAvatarTap: isOwnProfile
-                    ? () => _showAvatarOptions(context, profile)
+                    ? () => showAvatarOptions(context, profile, heroTag: 'mentor_avatar')
                     : null,
                 onCoverTap: isOwnProfile
                     ? () => _showCoverOptions(context, profile)
@@ -227,8 +227,10 @@ class _MentorProfileBody extends StatelessWidget {
                     ],
                     const SizedBox(height: 12), // 12px between sections
                     // ── Section 6: Videos ──
-                    const SectionHeader(title: 'Videos'),
-                    VideosHorizontalListView(videos: profile.videos),
+                    if (profile.videos.isNotEmpty) ...[
+                      const SectionHeader(title: 'Videos'),
+                      VideosHorizontalListView(videos: profile.videos),
+                    ],
                     // const SizedBox(height: 12), // 12px between sections
                     // ── Section 7: Completed Courses ──
                     const SectionHeader(title: 'Featured Courses'),
@@ -261,66 +263,8 @@ class _MentorProfileBody extends StatelessWidget {
 }
 
 /// ─────────────────────────────────────────────────────────────────────────────
-/// Helper functions called from [_MentorProfileBody.build]
+/// Mentor-specific helpers (cover image is unique to mentor profile)
 /// ─────────────────────────────────────────────────────────────────────────────
-
-/// Shows the avatar options bottom sheet (Facebook / View / Upload) for mentors.
-Future<void> _showAvatarOptions(
-  BuildContext context,
-  UserProfileEntity profile,
-) async {
-  final option = await showAvatarOptionsBottomSheet(
-    context: context,
-    currentImageUrl: profile.avatarUrl,
-    isAvatar: true,
-  );
-
-  if (option == null) return;
-  if (!context.mounted) return;
-
-  switch (option) {
-    case AvatarOption.facebook:
-      _openFacebookProfile(context, profile);
-    case AvatarOption.view:
-      if (profile.avatarUrl == null || profile.avatarUrl!.isEmpty) return;
-      Navigator.pushNamed(
-        context,
-        AppRoutes.fullScreenImage,
-        arguments: {'imageUrl': profile.avatarUrl, 'heroTag': 'mentor_avatar'},
-      );
-    case AvatarOption.upload:
-      await _pickAndCropAvatarThenUpload(context);
-  }
-}
-
-/// Pick image at full phone quality → custom crop (circular) → upload avatar.
-Future<void> _pickAndCropAvatarThenUpload(BuildContext context) async {
-  final avatarProvider = context.read<AvatarUploadProvider>();
-
-  final pickedFile = await avatarProvider.pickImage();
-  if (pickedFile == null || !context.mounted) return;
-
-  final croppedFile = await Navigator.push<CroppedFile>(
-    context,
-    MaterialPageRoute(
-      builder: (_) => CustomCropScreen(
-        imageFile: pickedFile,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        outputMaxWidth: 1024,
-        outputMaxHeight: 1024,
-        outputQuality: 95,
-        isCircular: true,
-        toolbarTitle: 'Crop Avatar',
-      ),
-    ),
-  );
-
-  if (croppedFile != null) {
-    await avatarProvider.uploadAvatarFromFile(XFile(croppedFile.path));
-  } else {
-    if (context.mounted) avatarProvider.resetState();
-  }
-}
 
 /// Shows the cover options bottom sheet (View / Upload) for mentors.
 Future<void> _showCoverOptions(
@@ -374,50 +318,4 @@ Future<void> _pickAndCropCoverThenUpload(
   } else {
     if (context.mounted) coverProvider.resetState();
   }
-}
-
-/// Opens the mentor's Facebook profile URL in the default browser.
-Future<void> _openFacebookProfile(
-  BuildContext context,
-  UserProfileEntity profile,
-) async {
-  final facebookLink = profile.socialLinks.firstWhere(
-    (link) =>
-        link.platform.toLowerCase() == 'facebook' ||
-        link.url.toLowerCase().contains('facebook.com'),
-    orElse: () => const SocialLink(platform: '', url: ''),
-  );
-
-  if (facebookLink.url.isNotEmpty) {
-    final uri = Uri.tryParse(facebookLink.url);
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-}
-
-/// Minimal app bar shown while loading / error state.
-class _LoadingAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _LoadingAppBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return AppBar(
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 24),
-        child: const SizedBox.shrink(),
-      ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 24),
-          child: const SizedBox.shrink(),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }

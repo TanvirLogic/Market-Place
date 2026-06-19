@@ -1,4 +1,5 @@
 import 'package:edtech/app/app_colors.dart';
+import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:flutter/material.dart';
 import '../../../../global/core/widgets/auth_button.dart';
@@ -7,8 +8,16 @@ import 'package:edtech/features/profile/mentor/presentation/screens/mentor_profi
 class InstructorProfileCard extends StatelessWidget {
   final bool isDark;
   final ColorScheme cs;
+  final String mentorName;
+  final String? avatarUrl;
 
-  const InstructorProfileCard({super.key, required this.isDark, required this.cs});
+  const InstructorProfileCard({
+    super.key,
+    required this.isDark,
+    required this.cs,
+    this.mentorName = '',
+    this.avatarUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +28,7 @@ class InstructorProfileCard extends StatelessWidget {
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),
         border: Border.all(
-          color: AppColors.border,
+          color: isDark ? cs.outlineVariant : AppColors.border,
         ),
       ),
       child: Row(
@@ -27,6 +36,17 @@ class InstructorProfileCard extends StatelessWidget {
           CircleAvatar(
             radius: 33,
             backgroundColor: cs.outlineVariant,
+            backgroundImage: avatarUrl != null
+                ? NetworkImage(avatarUrl!)
+                : null,
+            child: avatarUrl == null
+                ? Image.asset(
+                    Images.profileUser,
+                    width: 33,
+                    height: 33,
+                    fit: BoxFit.cover,
+                  )
+                : null,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -34,7 +54,7 @@ class InstructorProfileCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Michael Chen',
+                  mentorName.isNotEmpty ? mentorName : 'Instructor',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w500,
                     color: cs.onSurface,
@@ -42,9 +62,11 @@ class InstructorProfileCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Senior Full-Stack Developer',
+                  'Course Instructor',
                   style: TextStyle(
-                    color: isDark ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurface.withValues(alpha: 0.6),
+                    color: isDark
+                        ? cs.onSurface.withValues(alpha: 0.7)
+                        : cs.onSurface.withValues(alpha: 0.6),
                     fontSize: 13,
                   ),
                 ),
@@ -59,7 +81,8 @@ class InstructorProfileCard extends StatelessWidget {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const MentorProfileScreen(isOwnProfile: false),
+                  builder: (_) =>
+                      const MentorProfileScreen(isOwnProfile: false),
                 ),
               ),
               height: 22,

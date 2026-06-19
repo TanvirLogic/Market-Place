@@ -31,6 +31,7 @@ class ManageModuleProvider extends ChangeNotifier {
   double _uploadProgress = 0.0;
 
   final List<CourseModule> _modules = [];
+  final Map<int, String> _videoUrlCache = {};
   bool _hasUnsavedChanges = false;
 
   String _courseTitle = '';
@@ -99,23 +100,33 @@ class ManageModuleProvider extends ChangeNotifier {
         _modules.clear();
         for (final item in modulesList) {
           final lessons = (item['lessons'] as List?)?.map((l) {
+            final lessonId = l['id'] as int? ?? _nextLessonId++;
             final video = l['video'] as Map?;
-            final duration = video?['duration'] as int?;
+            final duration = video?['duration'] as int? ?? l['duration'] as int?;
+            final videoUrl = l['videoUrl'] as String?
+                ?? video?['videoUrl'] as String?
+                ?? video?['url'] as String?
+                ?? video?['fileUrl'] as String?
+                ?? l['fileUrl'] as String?
+                ?? l['url'] as String?
+                ?? _videoUrlCache[lessonId];
+            if (videoUrl != null) _videoUrlCache[lessonId] = videoUrl;
             return Lesson(
-              id: l['id'] as int? ?? _nextLessonId++,
+              id: lessonId,
               title: l['title'] as String? ?? '',
-              duration: duration != null ? '$duration' : '0:00',
+              duration: duration != null ? _formatDuration(duration) : '0:00',
               type: LessonType.video,
+              videoUrl: videoUrl,
             );
           }).toList() ?? [];
           final resources = (item['resources'] as List?)?.map((r) {
-            final file = r['file'] as Map?;
-            final duration = r['duration'] as String? ?? file?['duration'] as String?;
             return Lesson(
               id: r['id'] as int? ?? _nextLessonId++,
               title: r['title'] as String? ?? '',
-              duration: duration ?? '0:00',
+              duration: '',
               type: LessonType.resource,
+              fileUrl: r['fileUrl'] as String?,
+              fileType: r['fileType'] as String?,
             );
           }).toList() ?? [];
           _modules.add(
@@ -305,21 +316,21 @@ class ManageModuleProvider extends ChangeNotifier {
     String newName,
   ) async {
     final lesson = module.lessons[lessonIndex];
-    final body = <String, dynamic>{
-      'lessonId': lesson.id,
-      'title': newName,
-    };
+    final isResource = lesson.type == LessonType.resource;
     final response = await getNetworkCaller().putRequest(
-      url: Urls.courseModuleLessonUrl,
-      body: body,
+      url: isResource ? Urls.courseModuleResourceUrl : Urls.courseModuleLessonUrl,
+      body: isResource
+          ? {'resourceId': lesson.id, 'title': newName}
+          : {'lessonId': lesson.id, 'title': newName},
     );
     if (response.isSuccess) {
       module.lessons[lessonIndex].title = newName;
       notifyListeners();
+      ToastService.showSuccess(isResource ? 'Resource updated successfully' : 'Lesson renamed successfully');
       return true;
     } else {
       ToastService.showError(
-        response.errorMessage ?? 'Failed to rename lesson',
+        response.errorMessage ?? 'Failed to rename',
       );
       return false;
     }
@@ -327,18 +338,19 @@ class ManageModuleProvider extends ChangeNotifier {
 
   Future<bool> deleteLesson(CourseModule module, int lessonIndex) async {
     final lesson = module.lessons[lessonIndex];
+    final isResource = lesson.type == LessonType.resource;
     final response = await getNetworkCaller().deleteRequest(
-      url: Urls.courseModuleLessonUrl,
-      body: {'lessonId': lesson.id},
+      url: isResource ? Urls.courseModuleResourceUrl : Urls.courseModuleLessonUrl,
+      body: isResource ? {'resourceId': lesson.id} : {'lessonId': lesson.id},
     );
     if (response.isSuccess) {
       module.lessons.removeAt(lessonIndex);
       notifyListeners();
-      ToastService.showSuccess('Lesson deleted successfully');
+      ToastService.showSuccess(isResource ? 'Resource deleted successfully' : 'Lesson deleted successfully');
       return true;
     } else {
       ToastService.showError(
-        response.errorMessage ?? 'Failed to delete lesson',
+        response.errorMessage ?? 'Failed to delete',
       );
       return false;
     }
@@ -421,12 +433,15 @@ class ManageModuleProvider extends ChangeNotifier {
     final lessonData = (lessonRaw is Map) ? (lessonRaw['data'] is Map ? lessonRaw['data']['data'] ?? lessonRaw['data'] : lessonRaw['data']) : null;
     final lessonId = (lessonData is Map) ? lessonData['id'] as int? : null;
 
+    final newId = lessonId ?? _nextLessonId++;
+    _videoUrlCache[newId] = fileUrl;
     module.lessons.add(
       Lesson(
-        id: lessonId ?? _nextLessonId++,
+        id: newId,
         title: title,
-        duration: duration > 0 ? '$duration' : '0:00',
+        duration: duration > 0 ? _formatDuration(duration) : '0:00',
         type: LessonType.video,
+        videoUrl: fileUrl,
       ),
     );
     notifyListeners();
@@ -439,13 +454,14 @@ class ManageModuleProvider extends ChangeNotifier {
   Future<bool> addResourceLesson(int moduleIndex, String title, XFile resourceFile) async {
     final module = _modules[moduleIndex];
     final fileSize = await resourceFile.length();
+    final filename = resourceFile.name;
+    final contentType = _inferResourceContentType(filename);
 
     final uploadUrlResponse = await getNetworkCaller().postRequest(
-      url: Urls.courseModuleUploadUrl,
+      url: Urls.courseModuleResourceUploadUrl,
       body: {
-        'title': title,
-        'moduleId': module.id,
-        'fileSize': fileSize,
+        'filename': filename,
+        'contentType': contentType,
       },
     );
     if (!uploadUrlResponse.isSuccess) {
@@ -466,15 +482,16 @@ class ManageModuleProvider extends ChangeNotifier {
       return false;
     }
 
-    final uploaded = await _uploadToS3(uploadUrl, resourceFile, 'application/octet-stream');
+    final uploaded = await _uploadToS3(uploadUrl, resourceFile, contentType);
     if (!uploaded) return false;
 
     final lessonResponse = await getNetworkCaller().postRequest(
-      url: Urls.courseModuleLessonUrl,
+      url: Urls.courseModuleResourceUrl,
       body: {
-        'title': title,
         'moduleId': module.id,
-        'resourceUrl': fileUrl,
+        'title': title,
+        'fileUrl': fileUrl,
+        'fileType': contentType,
         'fileSize': fileSize,
       },
     );
@@ -500,6 +517,20 @@ class ManageModuleProvider extends ChangeNotifier {
     return true;
   }
 
+  String _inferResourceContentType(String filename) {
+    final ext = filename.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'pdf': return 'application/pdf';
+      case 'doc': return 'application/msword';
+      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls': return 'application/vnd.ms-excel';
+      case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'ppt': return 'application/vnd.ms-powerpoint';
+      case 'pptx': return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      default: return 'application/octet-stream';
+    }
+  }
+
   Future<bool> _uploadToS3(
     String url,
     XFile file,
@@ -511,29 +542,37 @@ class ManageModuleProvider extends ChangeNotifier {
     notifyListeners();
 
     final total = await file.length();
-    final stream = file.openRead();
+    final stream = file.openRead().cast<List<int>>();
 
     int sent = 0;
     int lastPct = -1;
+    DateTime lastUiUpdate = DateTime.now();
 
-    final progressStream = stream.asyncMap((chunk) async {
-      sent += chunk.length;
-      final pct = (sent * 100 ~/ total);
-      if (pct != lastPct) {
-        lastPct = pct;
-        _uploadProgress = sent / total;
-        onProgress?.call(sent / total);
-        notifyListeners();
-      }
-      await UploadNotificationService.showProgress(
-        progress: sent,
-        total: total,
-        title: 'Uploading Video Lesson',
-        fileName: file.name,
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-      return chunk;
-    });
+    final progressStream = stream.transform(
+      StreamTransformer<List<int>, List<int>>.fromHandlers(
+        handleData: (chunk, sink) {
+          sent += chunk.length;
+          final pct = total > 0 ? (sent * 100 ~/ total) : 0;
+          if (pct != lastPct) {
+            lastPct = pct;
+            _uploadProgress = sent / total;
+            onProgress?.call(sent / total);
+            final now = DateTime.now();
+            if (now.difference(lastUiUpdate) >= const Duration(milliseconds: 200)) {
+              lastUiUpdate = now;
+              notifyListeners();
+            }
+            UploadNotificationService.showProgress(
+              progress: sent,
+              total: total,
+              title: 'Uploading Video Lesson',
+              fileName: file.name,
+            );
+          }
+          sink.add(chunk);
+        },
+      ),
+    );
 
     final request = _StreamedProgressRequest(
       'PUT',
@@ -582,6 +621,12 @@ class ManageModuleProvider extends ChangeNotifier {
       'duration': metadata.duration > 0 ? metadata.duration : 1,
       'fileSize': fileSize,
     };
+  }
+
+  String _formatDuration(int seconds) {
+    final min = seconds ~/ 60;
+    final sec = seconds % 60;
+    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
   String _inferVideoContentType(String filename) {

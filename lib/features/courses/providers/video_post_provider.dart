@@ -164,8 +164,9 @@ class VideoPostProvider extends ChangeNotifier {
         _getVideoInfo(videoFile),
       ]);
 
-      final fileSize = (results[1] as Map<String, int>)['fileSize']!;
-      final duration = (results[1] as Map<String, int>)['duration']!;
+      final info = results[1] as Map<String, int>;
+      final fileSize = info['fileSize'] ?? 0;
+      final duration = info['duration'] ?? 0;
 
       final postResponse = await getNetworkCaller().postRequest(
         url: Urls.videoPostUrl,
@@ -210,23 +211,36 @@ class VideoPostProvider extends ChangeNotifier {
     notifyListeners();
 
     final total = await file.length();
-    final stream = file.openRead();
+    final stream = file.openRead().cast<List<int>>();
 
     int sent = 0;
+    int lastPct = -1;
+    DateTime lastUiUpdate = DateTime.now();
 
-    final progressStream = stream.asyncMap((chunk) async {
-      sent += chunk.length;
-      _uploadProgress = sent / total;
-      notifyListeners();
-      await UploadNotificationService.showProgress(
-        progress: sent,
-        total: total,
-        title: 'Uploading Video',
-        fileName: file.name,
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-      return chunk;
-    });
+    final progressStream = stream.transform(
+      StreamTransformer<List<int>, List<int>>.fromHandlers(
+        handleData: (chunk, sink) {
+          sent += chunk.length;
+          final pct = total > 0 ? (sent * 100 ~/ total) : 0;
+          if (pct != lastPct) {
+            lastPct = pct;
+            _uploadProgress = sent / total;
+            final now = DateTime.now();
+            if (now.difference(lastUiUpdate) >= const Duration(milliseconds: 200)) {
+              lastUiUpdate = now;
+              notifyListeners();
+            }
+            UploadNotificationService.showProgress(
+              progress: sent,
+              total: total,
+              title: 'Uploading Video',
+              fileName: file.name,
+            );
+          }
+          sink.add(chunk);
+        },
+      ),
+    );
 
     final request = _StreamedProgressRequest(
       'PUT',

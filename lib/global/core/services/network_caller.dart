@@ -211,7 +211,11 @@ class NetworkCaller {
         );
         break;
       case 'DELETE':
-        retryResponse = await http.delete(uri, headers: updatedHeaders);
+        retryResponse = await http.delete(
+          uri,
+          headers: updatedHeaders,
+          body: body != null ? jsonEncode(body) : null,
+        );
         break;
       default:
         return NetworkResponse(

@@ -5,8 +5,12 @@ import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/global/core/widgets/shimmer_widget.dart';
+import 'package:edtech/features/profile/student/presentation/widgets/video_player_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../data/entities/course_entity.dart';
 import '../../data/entities/module_entity.dart';
 import 'package:edtech/features/courses/providers/course_detail_provider.dart';
@@ -17,31 +21,114 @@ import '../widgets/instructor_profile_card.dart';
 import '../widgets/lesson_row_tile.dart';
 
 class CourseDetailsScreen extends StatelessWidget {
-  const CourseDetailsScreen({Key? key}) : super(key: key);
+  final int courseId;
+  const CourseDetailsScreen({Key? key, this.courseId = 0}) : super(key: key);
   static const String name = '/course-details';
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (context) => CourseDetailProvider(),
-      child: _CourseDetailsBody(),
+      create: (context) => CourseDetailProvider()..loadCourse(courseId),
+      child: _CourseDetailsBody(courseId: courseId),
     );
   }
 }
 
 class _CourseDetailsBody extends StatefulWidget {
+  final int courseId;
+  const _CourseDetailsBody({required this.courseId});
+
   @override
   State<_CourseDetailsBody> createState() => _CourseDetailsBodyState();
 }
 
 class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
+  Player? _player;
+  VideoController? _videoController;
+  bool _isPlaying = false;
+  bool _isInitialized = false;
+  bool _hasError = false;
+  bool _showControls = true;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<CourseDetailProvider>().loadCourse('1');
+      context.read<CourseDetailProvider>().loadCourse(widget.courseId);
     });
+  }
+
+  @override
+  void dispose() {
+    _player?.dispose();
+    super.dispose();
+  }
+
+  void _playIntroVideo(String url) {
+    _player?.dispose();
+    _player = null;
+    _videoController = null;
+    _isInitialized = false;
+    _isPlaying = false;
+    _hasError = false;
+
+    final player = Player();
+    _player = player;
+    _videoController = VideoController(player);
+
+    player.stream.playing.listen((playing) {
+      if (!mounted) return;
+      setState(() {
+        _isInitialized = true;
+        _isPlaying = playing;
+        _showControls = true;
+      });
+    });
+
+    player.stream.error.listen((_) {
+      if (mounted) setState(() => _hasError = true);
+    });
+
+    player.open(Media(url)).then((_) => player.play()).catchError((_) {
+      if (mounted) setState(() => _hasError = true);
+    });
+  }
+
+  void _stopIntroVideo() {
+    _player?.pause();
+    _player?.dispose();
+    _player = null;
+    _videoController = null;
+    if (mounted) {
+      setState(() {
+        _isInitialized = false;
+        _isPlaying = false;
+        _hasError = false;
+      });
+    }
+  }
+
+  void _togglePlayPause() {
+    if (_player == null || !_isInitialized) return;
+    if (_isPlaying) {
+      _player!.pause();
+      setState(() => _isPlaying = false);
+    } else {
+      _player!.play();
+      setState(() => _isPlaying = true);
+    }
+  }
+
+  void _openFullScreen(String url, String title) {
+    _player?.pause();
+    setState(() => _isPlaying = false);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VideoPlayerScreen(videoUrl: url, title: title),
+      ),
+    );
   }
 
   @override
@@ -56,7 +143,28 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
         if (course == null) {
           return Scaffold(
             appBar: _buildAppBar(context, cs, isDark),
-            body: const _CourseDetailsSkeleton(),
+            body: provider.errorMessage != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.error_outline, size: 48, color: cs.error),
+                        const SizedBox(height: 12),
+                        Text(
+                          provider.errorMessage!,
+                          style: TextStyle(color: cs.error),
+                        ),
+                        const SizedBox(height: 12),
+                        AuthButton(
+                          text: 'Retry',
+                          onPressed: () => provider.loadCourse(
+                            course?.id ?? widget.courseId,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const _CourseDetailsSkeleton(),
           );
         }
 
@@ -88,7 +196,11 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                           borderRadius: BorderRadius.circular(
                             AppSizes.radiusLg,
                           ),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(
+                            color: isDark
+                                ? cs.outlineVariant
+                                : AppColors.border,
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,7 +215,9 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              course.description,
+                              course.shortDescription.isNotEmpty
+                                  ? course.shortDescription
+                                  : course.description,
                               style: TextStyle(
                                 color: cs.onSurface.withValues(alpha: 0.6),
                                 fontSize: 14,
@@ -112,9 +226,9 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                             ),
                             const SizedBox(height: 12),
                             CourseStatsRow(
-                              videosCount: '${course.videosCount} Video',
+                              videosCount: '${course.totalLessons} Video',
                               resourcesCount:
-                                  '${course.resourcesCount} Resource',
+                                  '${course.totalResources} Resource',
                               isDark: isDark,
                               cs: cs,
                             ),
@@ -122,21 +236,28 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      _CourseTabContentView(course: course),
+                      _CourseTabContentView(
+                        course: course,
+                        isDark: isDark,
+                        cs: cs,
+                      ),
                     ],
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: BottomEnrollmentBar(
-                  price: '\u09F3${course.price.toStringAsFixed(2)}',
-                  isDark: isDark,
-                  cs: cs,
+              if (!course.isStudent)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: _BottomEnrollmentBar(
+                    price: course.type == 'PAID'
+                        ? '\u09F3${course.price.toStringAsFixed(2)}'
+                        : 'Free',
+                    isDark: isDark,
+                    cs: cs,
+                  ),
                 ),
-              ),
             ],
           ),
         );
@@ -160,61 +281,188 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
   }
 
   Widget _buildThumbnail(ColorScheme cs, bool isDark, CourseEntity course) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        height: 184,
-        child: Stack(
-          children: [
-            Container(
-              height: 184,
+    final hasIntroVideo = course.introVideoUrl.isNotEmpty;
+
+    if (_isInitialized && _player != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: GestureDetector(
+          onTap: () => setState(() => _showControls = !_showControls),
+          child: SizedBox(
+            height: 184,
+            child: Container(
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    cs.primary.withValues(alpha: 0.6),
-                    cs.primary.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(16),
+                color: Colors.black,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (_hasError)
+                    const Center(
+                      child: Icon(
+                        Icons.videocam_off,
+                        color: Colors.white54,
+                        size: 32,
+                      ),
+                    )
+                  else
+                    Video(
+                      controller: _videoController!,
+                      fit: BoxFit.contain,
+                      controls: null,
+                    ),
+                  if (_showControls) ...[
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: _stopIntroVideo,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: const BoxDecoration(
+                            color: Color(0x99000000),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: GestureDetector(
+                        onTap: _togglePlayPause,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _isPlaying ? Icons.pause : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: () =>
+                            _openFullScreen(course.introVideoUrl, course.title),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: const BoxDecoration(
+                            color: Color(0x99000000),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.fullscreen,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                ],
               ),
             ),
-            Positioned(
-              top: 8,
-              left: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: hasIntroVideo
+            ? () => _playIntroVideo(course.introVideoUrl)
+            : null,
+        child: SizedBox(
+          height: 184,
+          child: Stack(
+            children: [
+              if (course.thumbnailUrl.isNotEmpty)
+                Image.network(
+                  course.thumbnailUrl,
+                  width: double.infinity,
+                  height: 184,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(
+                    height: 184,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          cs.primary.withValues(alpha: 0.6),
+                          cs.primary.withValues(alpha: 0.2),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  height: 184,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        cs.primary.withValues(alpha: 0.6),
+                        cs.primary.withValues(alpha: 0.2),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
                 ),
-                decoration: BoxDecoration(
-                  color: isDark ? cs.surfaceContainerHighest : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'by ${course.instructorName}',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark ? cs.surfaceContainerHighest : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'by ${course.mentorName}',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
-            Center(
-              child: CircleAvatar(
-                radius: 28,
-                backgroundColor:
-                    (isDark ? cs.surfaceContainerHighest : Colors.white)
-                        .withValues(alpha: 0.9),
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  color: isDark ? Colors.white : Colors.black87,
-                  size: 36,
+              Center(
+                child: CircleAvatar(
+                  radius: 28,
+                  backgroundColor:
+                      (isDark ? cs.surfaceContainerHighest : Colors.white)
+                          .withValues(alpha: 0.9),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: isDark ? Colors.white : Colors.black87,
+                    size: 36,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -223,7 +471,14 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
 
 class _CourseTabContentView extends StatefulWidget {
   final CourseEntity course;
-  const _CourseTabContentView({required this.course});
+  final bool isDark;
+  final ColorScheme cs;
+
+  const _CourseTabContentView({
+    required this.course,
+    required this.isDark,
+    required this.cs,
+  });
 
   @override
   State<_CourseTabContentView> createState() => _CourseTabContentViewState();
@@ -236,8 +491,8 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
+    final isDark = widget.isDark;
+    final cs = widget.cs;
     final course = widget.course;
 
     return Column(
@@ -257,7 +512,9 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
                       bottom: BorderSide(
                         color: isSelected
                             ? AppColors.themeColor
-                            : const Color(0xFFEFEFF0),
+                            : (isDark
+                                  ? cs.outlineVariant
+                                  : const Color(0xFFEFEFF0)),
                         width: isSelected ? 2.5 : 1.0,
                       ),
                     ),
@@ -280,8 +537,20 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
         ),
         const SizedBox(height: 24),
         if (_activeIndex == 0) ..._overviewContent(isDark, cs, course),
-        if (_activeIndex == 1) _NativeModuleTabView(modules: course.modules),
-        if (_activeIndex == 2) CourseReviewsTabView(reviews: course.reviews),
+        if (_activeIndex == 1)
+          _NativeModuleTabView(
+            modules: course.modules,
+            isDark: isDark,
+            cs: cs,
+            isStudent: course.isStudent,
+          ),
+        if (_activeIndex == 2)
+          CourseReviewsTabView(
+            reviews: course.reviews,
+            isDark: isDark,
+            cs: cs,
+            courseId: course.id,
+          ),
       ],
     );
   }
@@ -291,15 +560,27 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
     ColorScheme cs,
     CourseEntity course,
   ) {
+    final requirements = course.requirements.isNotEmpty
+        ? course.requirements
+              .split('\n')
+              .where((l) => l.trim().isNotEmpty)
+              .toList()
+        : <String>[];
+
     return [
-      InstructorProfileCard(isDark: isDark, cs: cs),
+      InstructorProfileCard(
+        isDark: isDark,
+        cs: cs,
+        mentorName: course.mentorName,
+        avatarUrl: course.mentorAvatarUrl,
+      ),
       const SizedBox(height: 16),
       CourseExpandableContainer(
         isDark: isDark,
         cs: cs,
         title: 'Description',
         child: Text(
-          '\u2022  Master modern web development with this comprehensive bootcamp. Learn HTML, CSS, JavaScript, React, Node.js, and MongoDB. Build real-world projects and get job-ready skills. Perfect for beginners and intermediate developers looking to advance their careers.',
+          '\u2022  ${course.description.isNotEmpty ? course.description : "No description available"}',
           style: TextStyle(
             color: cs.onSurface.withValues(alpha: 0.6),
             fontSize: 14,
@@ -312,32 +593,31 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
         isDark: isDark,
         cs: cs,
         title: 'Requirements',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '\u2022  Basic computer skills',
-              style: TextStyle(
-                color: cs.onSurface.withValues(alpha: 0.6),
-                height: 1.5,
+        child: requirements.isNotEmpty
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: requirements
+                    .map(
+                      (r) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '\u2022  $r',
+                          style: TextStyle(
+                            color: cs.onSurface.withValues(alpha: 0.6),
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              )
+            : Text(
+                'No requirements',
+                style: TextStyle(
+                  color: cs.onSurface.withValues(alpha: 0.6),
+                  height: 1.5,
+                ),
               ),
-            ),
-            Text(
-              '\u2022  No prior programming experience needed',
-              style: TextStyle(
-                color: cs.onSurface.withValues(alpha: 0.6),
-                height: 1.5,
-              ),
-            ),
-            Text(
-              '\u2022  A computer with internet connection',
-              style: TextStyle(
-                color: cs.onSurface.withValues(alpha: 0.6),
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
       ),
       const SizedBox(height: 16),
       CourseExpandableContainer(
@@ -348,7 +628,31 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Lessons : 156',
+              'Level : ${course.level}',
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Language : ${course.language}',
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Lessons : ${course.totalLessons}',
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Resources : ${course.totalResources}',
               style: TextStyle(
                 color: cs.onSurface.withValues(alpha: 0.6),
                 height: 1.5,
@@ -363,7 +667,16 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
 
 class _NativeModuleTabView extends StatefulWidget {
   final List<ModuleEntity> modules;
-  const _NativeModuleTabView({required this.modules});
+  final bool isDark;
+  final ColorScheme cs;
+  final bool isStudent;
+
+  const _NativeModuleTabView({
+    required this.modules,
+    required this.isDark,
+    required this.cs,
+    required this.isStudent,
+  });
 
   @override
   State<_NativeModuleTabView> createState() => _NativeModuleTabViewState();
@@ -383,8 +696,20 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
+    final isDark = widget.isDark;
+    final cs = widget.cs;
+
+    if (widget.modules.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: Text(
+            'No modules yet',
+            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5)),
+          ),
+        ),
+      );
+    }
 
     return Column(
       children: List.generate(widget.modules.length, (index) {
@@ -412,17 +737,21 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                     }
                   });
                 },
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(16),
-                ),
+                borderRadius: isExpanded
+                    ? const BorderRadius.vertical(
+                        top: Radius.circular(16),
+                      )
+                    : BorderRadius.circular(16),
                 child: Container(
                   decoration: BoxDecoration(
                     color: isDark
                         ? cs.surfaceContainerHighest
                         : const Color(0xFFF9F9F9),
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(16),
-                    ),
+                    borderRadius: isExpanded
+                        ? const BorderRadius.vertical(
+                            top: Radius.circular(16),
+                          )
+                        : BorderRadius.circular(16),
                   ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -445,7 +774,7 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              module.lessonsCount,
+                              '${module.lessons.length} items',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: cs.onSurface.withValues(alpha: 0.6),
@@ -467,7 +796,10 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                 ),
               ),
               if (isExpanded) ...[
-                Divider(height: 1, color: const Color(0xFFEFEFF0)),
+                Divider(
+                  height: 1,
+                  color: isDark ? cs.outlineVariant : const Color(0xFFEFEFF0),
+                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Column(
@@ -476,6 +808,7 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                     ) {
                       final lesson = module.lessons[lessonIndex];
                       final isActive = _activeLessonTitle == lesson.title;
+                      final isLocked = !widget.isStudent && !lesson.isResource;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -484,9 +817,28 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                           duration: lesson.duration,
                           isActive: isActive,
                           isDark: isDark,
+                          isEnrolled: widget.isStudent,
+                          isResource: lesson.isResource,
                           onTap: () {
-                            if (!lesson.isLocked) {
+                            if (!isLocked) {
                               setState(() => _activeLessonTitle = lesson.title);
+                              if (lesson.isResource && lesson.fileUrl != null) {
+                                launchUrl(
+                                  Uri.parse(lesson.fileUrl!),
+                                  mode: LaunchMode.externalApplication,
+                                );
+                              } else if (!lesson.isResource &&
+                                  lesson.videoUrl != null) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => VideoPlayerScreen(
+                                      videoUrl: lesson.videoUrl!,
+                                      title: lesson.title,
+                                    ),
+                                  ),
+                                );
+                              }
                             }
                           },
                         ),
@@ -581,19 +933,19 @@ class _CourseDetailsSkeleton extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                ShimmerWidget(
+                const ShimmerWidget(
                   width: double.infinity,
                   height: 14,
                   borderRadius: 4,
                 ),
                 const SizedBox(height: 4),
-                ShimmerWidget(
+                const ShimmerWidget(
                   width: double.infinity,
                   height: 14,
                   borderRadius: 4,
                 ),
                 const SizedBox(height: 4),
-                ShimmerWidget(width: 140, height: 14, borderRadius: 4),
+                const ShimmerWidget(width: 140, height: 14, borderRadius: 4),
               ],
             ),
           ),
@@ -625,22 +977,19 @@ class _CourseDetailsSkeleton extends StatelessWidget {
   }
 }
 
-class BottomEnrollmentBar extends StatelessWidget {
+class _BottomEnrollmentBar extends StatelessWidget {
   final String price;
   final bool isDark;
   final ColorScheme cs;
 
-  const BottomEnrollmentBar({
-    Key? key,
+  const _BottomEnrollmentBar({
     required this.price,
     required this.isDark,
     required this.cs,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 16, 10, 24),
       decoration: const BoxDecoration(color: Colors.transparent),
@@ -651,16 +1000,18 @@ class BottomEnrollmentBar extends StatelessWidget {
             height: 48,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? cs.surfaceContainerLow : Colors.white,
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(
+                color: isDark ? cs.outlineVariant : AppColors.border,
+              ),
             ),
             child: Text(
               price,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.primaryText,
+                color: isDark ? Colors.white : AppColors.primaryText,
               ),
             ),
           ),

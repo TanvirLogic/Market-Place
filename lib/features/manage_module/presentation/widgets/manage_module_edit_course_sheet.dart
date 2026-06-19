@@ -9,17 +9,41 @@ import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 
 class ManageModuleEditCourseSheet extends StatefulWidget {
   final int courseId;
+  final String courseTitle;
+  final String courseShortDescription;
+  final String courseDescription;
+  final String courseRequirements;
+  final String courseLanguage;
+  final String courseLevel;
+  final String courseType;
+  final double coursePrice;
   final Future<bool> Function(Map<String, dynamic> body) onSave;
 
   const ManageModuleEditCourseSheet({
     super.key,
     required this.courseId,
+    required this.courseTitle,
+    required this.courseShortDescription,
+    required this.courseDescription,
+    required this.courseRequirements,
+    required this.courseLanguage,
+    required this.courseLevel,
+    required this.courseType,
+    required this.coursePrice,
     required this.onSave,
   });
 
   static Future<void> show(
     BuildContext context, {
     required int courseId,
+    required String courseTitle,
+    required String courseShortDescription,
+    required String courseDescription,
+    required String courseRequirements,
+    required String courseLanguage,
+    required String courseLevel,
+    required String courseType,
+    required double coursePrice,
     required Future<bool> Function(Map<String, dynamic> body) onSave,
   }) {
     return showModalBottomSheet(
@@ -33,6 +57,14 @@ class ManageModuleEditCourseSheet extends StatefulWidget {
       ),
       builder: (_) => ManageModuleEditCourseSheet(
         courseId: courseId,
+        courseTitle: courseTitle,
+        courseShortDescription: courseShortDescription,
+        courseDescription: courseDescription,
+        courseRequirements: courseRequirements,
+        courseLanguage: courseLanguage,
+        courseLevel: courseLevel,
+        courseType: courseType,
+        coursePrice: coursePrice,
         onSave: onSave,
       ),
     );
@@ -45,15 +77,30 @@ class ManageModuleEditCourseSheet extends StatefulWidget {
 
 class _ManageModuleEditCourseSheetState
     extends State<ManageModuleEditCourseSheet> {
-  final _titleCtrl = TextEditingController();
-  final _shortDescCtrl = TextEditingController();
-  final _descCtrl = TextEditingController();
-  final _reqCtrl = TextEditingController();
-  final _priceCtrl = TextEditingController();
-  String _language = 'English';
-  String _level = 'BEGINNER';
-  String _type = 'FREE';
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _shortDescCtrl;
+  late final TextEditingController _descCtrl;
+  late final TextEditingController _reqCtrl;
+  late final TextEditingController _priceCtrl;
+  late String _language;
+  late String _level;
+  late String _type;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.courseTitle);
+    _shortDescCtrl = TextEditingController(text: widget.courseShortDescription);
+    _descCtrl = TextEditingController(text: widget.courseDescription);
+    _reqCtrl = TextEditingController(text: widget.courseRequirements);
+    _priceCtrl = TextEditingController(
+      text: widget.coursePrice > 0 ? widget.coursePrice.toStringAsFixed(0) : '',
+    );
+    _language = widget.courseLanguage;
+    _level = widget.courseLevel;
+    _type = widget.courseType;
+  }
 
   @override
   void dispose() {
@@ -65,7 +112,24 @@ class _ManageModuleEditCourseSheetState
     super.dispose();
   }
 
+  bool _nothingChanged() {
+    return _titleCtrl.text.trim() == (widget.courseTitle)
+        && _shortDescCtrl.text.trim() == widget.courseShortDescription
+        && _descCtrl.text.trim() == widget.courseDescription
+        && _reqCtrl.text.trim() == widget.courseRequirements
+        && _language == widget.courseLanguage
+        && _level == widget.courseLevel
+        && _type == widget.courseType
+        && _priceCtrl.text.trim() == (widget.coursePrice > 0 ? widget.coursePrice.toStringAsFixed(0) : '')
+        && context.read<CourseUploadProvider>().thumbnailFile == null
+        && context.read<CourseUploadProvider>().videoFile == null;
+  }
+
   Future<void> _handleSave() async {
+    if (_nothingChanged()) {
+      Navigator.of(context).pop();
+      return;
+    }
     final body = <String, dynamic>{
       'courseId': widget.courseId,
     };

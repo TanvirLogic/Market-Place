@@ -20,6 +20,8 @@ class ModuleCard extends StatelessWidget {
   final void Function(int, String) onRenameLesson;
   final Future<bool> Function(int) onDeleteLesson;
   final void Function(int) onEditLesson;
+  final void Function(String videoUrl, String title) onTapVideo;
+  final void Function(String fileUrl, String title) onTapResource;
 
   final ValueNotifier<int>? resetNotifier;
 
@@ -38,6 +40,8 @@ class ModuleCard extends StatelessWidget {
     required this.onRenameLesson,
     required this.onDeleteLesson,
     required this.onEditLesson,
+    required this.onTapVideo,
+    required this.onTapResource,
     this.resetNotifier,
   });
 
@@ -139,7 +143,7 @@ class ModuleCard extends StatelessWidget {
                       itemBuilder: (context, lessonIndex) {
                         final lesson = module.lessons[lessonIndex];
                         return Padding(
-                          key: ValueKey('lesson_${lesson.id}'),
+                          key: ValueKey('lesson_${lesson.type.name}_${lesson.id}'),
                           padding: EdgeInsets.only(top: lessonIndex > 0 ? 4 : 0),
                           child: ReorderableDelayedDragStartListener(
                             index: lessonIndex,
@@ -153,6 +157,8 @@ class ModuleCard extends StatelessWidget {
                               onRenameLesson: onRenameLesson,
                               onShowRenameDialog: onShowRenameDialog,
                               onEditLesson: onEditLesson,
+                              onTapVideo: onTapVideo,
+                              onTapResource: onTapResource,
                             ),
                           ),
                         );
@@ -207,6 +213,8 @@ class _LessonSwipeRow extends StatefulWidget {
   final void Function(int, String) onRenameLesson;
   final void Function(String, ValueChanged<String>) onShowRenameDialog;
   final void Function(int) onEditLesson;
+  final void Function(String videoUrl, String title) onTapVideo;
+  final void Function(String fileUrl, String title) onTapResource;
 
   const _LessonSwipeRow({
     required this.lesson,
@@ -218,6 +226,8 @@ class _LessonSwipeRow extends StatefulWidget {
     required this.onRenameLesson,
     required this.onShowRenameDialog,
     required this.onEditLesson,
+    required this.onTapVideo,
+    required this.onTapResource,
   });
 
   @override
@@ -270,73 +280,92 @@ class _LessonSwipeRowState extends State<_LessonSwipeRow> {
               ? BorderRadius.zero
               : BorderRadius.circular(12);
 
-          return Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: widget.isDark ? cs.surfaceContainerHighest : const Color(0xFFF8F9FA),
+          final itemTap = !widget.isEditing
+              ? (lesson.type == LessonType.video && lesson.videoUrl != null
+                  ? () => widget.onTapVideo(lesson.videoUrl!, lesson.title)
+                  : lesson.type == LessonType.resource && lesson.fileUrl != null
+                      ? () => widget.onTapResource(lesson.fileUrl!, lesson.title)
+                      : null)
+              : null;
+
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: itemTap,
               borderRadius: borderRadius,
-              border: Border.all(color: const Color(0xFFEFEFF0)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: widget.isDark ? cs.surfaceContainerLow : const Color(0xFFEAEBFE),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: SvgPicture.asset(
-                      lesson.type == LessonType.video
-                          ? Images.learnVideo
-                          : Images.resource,
-                      width: 16,
-                      height: 16,
-                      colorFilter: ColorFilter.mode(cs.onSurface, BlendMode.srcIn),
-                    ),
-                  ),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: widget.isDark ? cs.surfaceContainerHighest : const Color(0xFFF8F9FA),
+                  borderRadius: borderRadius,
+                  border: Border.all(color: const Color(0xFFEFEFF0)),
                 ),
-                const SizedBox(width: 12),
-                if (widget.isEditing) ...[
-                  GestureDetector(
-                    onTap: () => widget.onShowRenameDialog(
-                      lesson.title,
-                      (newName) => widget.onRenameLesson(lessonIndex, newName),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: SvgPicture.asset(
-                        Images.editProfile,
-                        width: 14,
-                        height: 14,
-                        colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: widget.isDark ? cs.surfaceContainerLow : const Color(0xFFEAEBFE),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: SvgPicture.asset(
+                          lesson.type == LessonType.video
+                              ? Images.learnVideo
+                              : Images.resource,
+                          width: 16,
+                          height: 16,
+                          colorFilter: ColorFilter.mode(cs.onSurface, BlendMode.srcIn),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-                Expanded(
-                  child: GestureDetector(
-                    onTap: widget.isEditing ? () => widget.onShowRenameDialog(
-                      lesson.title,
-                      (newName) => widget.onRenameLesson(lessonIndex, newName),
-                    ) : null,
-                    child: Text(
-                      lesson.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface),
+                    const SizedBox(width: 12),
+                    if (widget.isEditing) ...[
+                      GestureDetector(
+                        onTap: () => widget.onShowRenameDialog(
+                          lesson.title,
+                          (newName) => widget.onRenameLesson(lessonIndex, newName),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: SvgPicture.asset(
+                            Images.editProfile,
+                            width: 14,
+                            height: 14,
+                            colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
+                          ),
+                        ),
+                      ),
+                    ],
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: widget.isEditing
+                            ? () => widget.onShowRenameDialog(
+                                  lesson.title,
+                                  (newName) => widget.onRenameLesson(lessonIndex, newName),
+                                )
+                            : itemTap,
+                        child: Text(
+                          lesson.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface),
+                        ),
+                      ),
                     ),
-                  ),
+                    if (lesson.type == LessonType.video) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        lesson.duration,
+                        style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                    Icon(Icons.chevron_right, size: 18, color: cs.onSurface),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  lesson.duration,
-                  style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
-                ),
-                const SizedBox(width: 8),
-                Icon(Icons.chevron_right, size: 18, color: cs.onSurface),
-              ],
+              ),
             ),
           );
         },

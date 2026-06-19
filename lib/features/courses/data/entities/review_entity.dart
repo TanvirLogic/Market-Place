@@ -1,25 +1,19 @@
 class ReviewEntity {
-  final String name;
-  final String timeAgo;
+  final int id;
   final int rating;
   final String comment;
-  final String imageUrl;
+  final String createdAt;
+  final String userName;
+  final String? userAvatarUrl;
+  final int? userId;
 
   const ReviewEntity({
-    required this.name,
-    required this.timeAgo,
+    required this.id,
     required this.rating,
     required this.comment,
-    required this.imageUrl,
+    required this.createdAt,
+    required this.userName,
+    this.userAvatarUrl,
+    this.userId,
   });
-
-  factory ReviewEntity.fromJson(Map<String, dynamic> json) {
-    return ReviewEntity(
-      name: json['name'] ?? '',
-      timeAgo: json['time_ago'] ?? json['timeAgo'] ?? '',
-      rating: (json['rating'] ?? 0) is int ? json['rating'] as int : int.tryParse(json['rating']?.toString() ?? '') ?? 0,
-      comment: json['comment'] ?? '',
-      imageUrl: json['image_url'] ?? json['imageUrl'] ?? '',
-    );
-  }
 }

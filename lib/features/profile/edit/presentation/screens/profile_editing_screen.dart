@@ -59,14 +59,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  void _initControllers() {
+  UserProfileEntity? _resolveProfile() {
     final studentProfile = context.read<StudentProfileProvider>().profile;
-    UserProfileEntity? profile;
-    if (studentProfile?.role == 'STUDENT') {
-      profile = studentProfile;
-    } else {
-      profile = context.read<MentorProfileProvider>().profile ?? studentProfile;
+    if (studentProfile != null && studentProfile.role == 'STUDENT') {
+      return studentProfile;
     }
+    return context.read<MentorProfileProvider>().profile ?? studentProfile;
+  }
+
+  void _initControllers() {
+    final profile = _resolveProfile();
 
     _nameController = TextEditingController(text: profile?.name ?? '');
     _usernameController = TextEditingController(text: profile?.username ?? '');
@@ -91,11 +93,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   int _resolveBioMaxLength() {
-    final studentProfile = context.read<StudentProfileProvider>().profile;
-    if (studentProfile?.role == 'STUDENT') return 80;
-    final mentorProfile = context.read<MentorProfileProvider>().profile;
-    if (mentorProfile?.role == 'MENTOR') return 300;
-    return studentProfile?.role == 'STUDENT' ? 80 : 300;
+    final profile = _resolveProfile();
+    return profile?.role == 'STUDENT' ? 80 : 300;
   }
 
   String _formatDate(DateTime date) {
@@ -343,9 +342,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   List<String> _socialPlatforms() {
-    return context.read<StudentProfileProvider>().profile?.socialPlatforms ??
-        context.read<MentorProfileProvider>().profile?.socialPlatforms ??
-        <String>[];
+    return _resolveProfile()?.socialPlatforms ?? <String>[];
   }
 
   @override

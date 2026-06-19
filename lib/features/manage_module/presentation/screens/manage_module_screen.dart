@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:edtech/features/manage_module/providers/manage_module_provider.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_header.dart';
@@ -13,6 +14,7 @@ import 'package:edtech/features/manage_module/presentation/widgets/manage_module
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_module_sheet.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_lesson_sheet.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
+import 'package:edtech/features/profile/student/presentation/widgets/video_player_screen.dart';
 
 class ManageModuleScreen extends StatelessWidget {
   final int courseId;
@@ -85,6 +87,14 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                         onEditCourse: () => ManageModuleEditCourseSheet.show(
                           context,
                           courseId: provider.courseId,
+                          courseTitle: provider.courseTitle,
+                          courseShortDescription: provider.courseShortDescription,
+                          courseDescription: provider.courseDescription,
+                          courseRequirements: provider.courseRequirements,
+                          courseLanguage: provider.courseLanguage,
+                          courseLevel: provider.courseLevel,
+                          courseType: provider.courseType,
+                          coursePrice: provider.coursePrice,
                           onSave: provider.updateCourse,
                         ),
                       ),
@@ -187,16 +197,32 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                         onReorderLesson: provider.reorderLesson,
                         onRenameLesson: provider.renameLesson,
                         onDeleteLesson: provider.deleteLesson,
-                        onEditLesson: (module, lessonIndex) =>
-                            ManageModuleEditLessonSheet.show(
-                              context,
-                              lesson: module.lessons[lessonIndex],
-                              onSave: (title) => provider.renameLesson(
-                                module,
-                                lessonIndex,
-                                title,
+                        onEditLesson: (module, lessonIndex) {
+                          final lesson = module.lessons[lessonIndex];
+                          ManageModuleEditLessonSheet.show(
+                            context,
+                            lesson: lesson,
+                            onSave: (title) => provider.renameLesson(
+                              module,
+                              lessonIndex,
+                              title,
+                            ),
+                          );
+                        },
+                        onTapVideo: (videoUrl, title) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => VideoPlayerScreen(
+                                videoUrl: videoUrl,
+                                title: title,
                               ),
                             ),
+                          );
+                        },
+                        onTapResource: (fileUrl, title) {
+                          launchUrl(Uri.parse(fileUrl), mode: LaunchMode.externalApplication);
+                        },
                       ),
                     ],
                   ),

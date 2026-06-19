@@ -162,7 +162,7 @@ class _HubScreenState extends State<HubScreen> {
             ),
             const SizedBox(height: 16),
             _SettingsGroupCard(
-              title: 'Personalise',
+              title: 'Personalize',
               backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
               cs: cs,
               isDark: isDark,
@@ -292,12 +292,12 @@ class _HubHeader extends StatelessWidget {
                 ? CachedNetworkImageProvider(avatarUrl)
                 : null,
             child: avatarUrl == null
-                ? Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : 'U',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? Colors.white70 : Colors.black54,
+                ? ClipOval(
+                    child: Image.asset(
+                      Images.profileUser,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
                     ),
                   )
                 : null,
@@ -603,19 +603,14 @@ class _ToggleRowTileState extends State<_ToggleRowTile> {
                 ),
               ),
             ),
-            Transform.scale(
-              scale: 0.85,
-              child: Switch.adaptive(
-                value: _effectiveValue,
-                activeColor: AppColors.themeColor,
-                activeTrackColor: AppColors.themeColor.withValues(alpha: 0.2),
-                onChanged: (value) {
-                  widget.onChanged?.call(value);
-                  if (widget.onChanged == null) {
-                    setState(() => _toggle = value);
-                  }
-                },
-              ),
+            _CustomSwitch(
+              value: _effectiveValue,
+              onChanged: (value) {
+                widget.onChanged?.call(value);
+                if (widget.onChanged == null) {
+                  setState(() => _toggle = value);
+                }
+              },
             ),
           ],
         ),
@@ -653,21 +648,56 @@ class _ToggleRowTileState extends State<_ToggleRowTile> {
               ),
             ),
           ),
-          Transform.scale(
-            scale: 0.85,
-            child: Switch.adaptive(
-              value: _effectiveValue,
-              activeColor: AppColors.themeColor,
-              activeTrackColor: AppColors.themeColor.withValues(alpha: 0.2),
-              onChanged: (value) {
-                widget.onChanged?.call(value);
-                if (widget.onChanged == null) {
-                  setState(() => _toggle = value);
-                }
-              },
-            ),
+          _CustomSwitch(
+            value: _effectiveValue,
+            onChanged: (value) {
+              widget.onChanged?.call(value);
+              if (widget.onChanged == null) {
+                setState(() => _toggle = value);
+              }
+            },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CustomSwitch extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  const _CustomSwitch({required this.value, this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged?.call(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 48,
+        height: 28,
+        decoration: BoxDecoration(
+          color: value ? AppColors.themeColor : const Color(0xFFEAECF0),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Stack(
+          children: [
+            AnimatedAlign(
+              duration: const Duration(milliseconds: 200),
+              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: 24,
+                height: 24,
+                margin: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -686,8 +716,14 @@ class _LogoutButton extends StatelessWidget {
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(double.infinity, 54),
-        backgroundColor: const Color(0xFFFCF3F3),
-        side: const BorderSide(color: Color(0xFFEBADAD)),
+        backgroundColor: isDark
+            ? cs.error.withValues(alpha: 0.18)
+            : const Color(0xFFFCF3F3),
+        side: BorderSide(
+          color: isDark
+              ? cs.error.withValues(alpha: 0.4)
+              : const Color(0xFFEBADAD),
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         elevation: 0,
       ),
@@ -696,14 +732,22 @@ class _LogoutButton extends StatelessWidget {
         children: [
           Text(
             'Logout',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w500,
-              color: Color(0xFFC53030),
+              color: isDark ? cs.error : const Color(0xFFC53030),
             ),
           ),
           const SizedBox(width: 8),
-          SvgPicture.asset(Images.logout, width: 18, height: 18),
+          SvgPicture.asset(
+            Images.logout,
+            width: 18,
+            height: 18,
+            colorFilter: ColorFilter.mode(
+              isDark ? cs.error : const Color(0xFFC53030),
+              BlendMode.srcIn,
+            ),
+          ),
         ],
       ),
     );

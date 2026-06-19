@@ -235,7 +235,7 @@ class _AdsCreateScreenState extends State<AdsCreateScreen> {
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),
         border: Border.all(
-          color: AppColors.border,
+          color: isDark ? cs.outlineVariant : AppColors.border,
         ),
       ),
       child: Column(
@@ -336,11 +336,15 @@ class _AdsTextField extends StatelessWidget {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusDef),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(
+            color: isDark ? cs.outlineVariant : AppColors.border,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusDef),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(
+            color: isDark ? cs.outlineVariant : AppColors.border,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusDef),

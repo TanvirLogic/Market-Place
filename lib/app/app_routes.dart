@@ -99,7 +99,11 @@ class AppRoutes {
           ),
         );
       case courseDetails:
-        return MaterialPageRoute(builder: (_) => const CourseDetailsScreen());
+        final args = settings.arguments as Map?;
+        final courseId = (args?['courseId'] as int?) ?? 0;
+        return MaterialPageRoute(
+          builder: (_) => CourseDetailsScreen(courseId: courseId),
+        );
       case enrolledCourse:
         return MaterialPageRoute(builder: (_) => const EnrolledCourseScreen());
       case paymentSuccess:

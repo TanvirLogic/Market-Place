@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -33,7 +34,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
     _player = Player();
     _videoController = VideoController(_player);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _enterFullScreen());
     _initPlayer();
+  }
+
+  void _enterFullScreen() {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  void _exitFullScreen() {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  @override
+  void dispose() {
+    _exitFullScreen();
+    _player.dispose();
+    super.dispose();
   }
 
   Future<void> _initPlayer() async {
@@ -74,12 +101,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         });
       }
     }
-  }
-
-  @override
-  void dispose() {
-    _player.dispose();
-    super.dispose();
   }
 
   void _startControlHideTimer() {

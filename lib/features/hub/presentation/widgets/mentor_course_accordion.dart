@@ -121,17 +121,41 @@ class MetaBadgeRow extends StatelessWidget {
     return Row(
       children: [
         MetaBadge(
-          icon: SvgPicture.asset(Images.videoIcon, width: 16, height: 16),
+          icon: SvgPicture.asset(
+            Images.videoIcon,
+            width: 16,
+            height: 16,
+            colorFilter: ColorFilter.mode(
+              Theme.of(context).colorScheme.onSurface,
+              BlendMode.srcIn,
+            ),
+          ),
           label: '$videosCount Video',
         ),
         const SizedBox(width: 8),
         MetaBadge(
-          icon: SvgPicture.asset(Images.resource, width: 16, height: 16),
+          icon: SvgPicture.asset(
+            Images.resource,
+            width: 16,
+            height: 16,
+            colorFilter: ColorFilter.mode(
+              Theme.of(context).colorScheme.onSurface,
+              BlendMode.srcIn,
+            ),
+          ),
           label: '${resourcesCount.toString().padLeft(2, '0')} Resource',
         ),
         const SizedBox(width: 8),
         MetaBadge(
-          icon: SvgPicture.asset(Images.totalStudent, width: 16, height: 16),
+          icon: SvgPicture.asset(
+            Images.totalStudent,
+            width: 16,
+            height: 16,
+            colorFilter: ColorFilter.mode(
+              Theme.of(context).colorScheme.onSurface,
+              BlendMode.srcIn,
+            ),
+          ),
           label: '$studentsCount Students',
         ),
       ],
@@ -186,9 +210,11 @@ class ExpandedCourseContent extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: isDark ? cs.surfaceContainerHighest : AppColors.surface,
             borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(
+              color: isDark ? cs.outlineVariant : AppColors.border,
+            ),
           ),
           child: Column(
             children: [

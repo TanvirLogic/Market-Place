@@ -31,6 +31,8 @@ class PostOptionsOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = cs.brightness == Brightness.dark;
     return Material(
       type: MaterialType.transparency,
       child: Stack(
@@ -40,7 +42,7 @@ class PostOptionsOverlay extends StatelessWidget {
             child: Container(
               width: 343,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? cs.surfaceContainerLow : Colors.white,
                 borderRadius: BorderRadius.circular(AppSizes.radiusLg),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
@@ -58,7 +60,7 @@ class PostOptionsOverlay extends StatelessWidget {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const Expanded(child: Divider(thickness: 1, color: AppColors.border)),
+                      Expanded(child: Divider(thickness: 1, color: isDark ? cs.outlineVariant : AppColors.border)),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Text(
@@ -66,11 +68,11 @@ class PostOptionsOverlay extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                            color: cs.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ),
-                      const Expanded(child: Divider(thickness: 1, color: AppColors.border)),
+                      Expanded(child: Divider(thickness: 1, color: isDark ? cs.outlineVariant : AppColors.border)),
                     ],
                   ),
                   const SizedBox(height: 12),

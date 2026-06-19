@@ -84,6 +84,10 @@ class CustomTextField extends StatelessWidget {
           focusNode: focusNode,
           onChanged: onChanged,
           decoration: InputDecoration(
+            filled: true,
+            fillColor: cs.brightness == Brightness.dark
+                ? cs.surfaceContainerHighest
+                : AppColors.fill,
             hintText: hint,
             hintStyle: TextStyle(
               color: cs.onSurface.withValues(alpha: 0.5),
@@ -91,10 +95,18 @@ class CustomTextField extends StatelessWidget {
             ),
             prefixIcon: prefixIcon,
             suffixIcon: suffixIcon,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppSizes.radiusDef),
-              borderSide: const BorderSide(color: AppColors.border, width: 1),
+              borderSide: BorderSide(
+                color: cs.brightness == Brightness.dark
+                    ? cs.outlineVariant
+                    : AppColors.border,
+                width: 1,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppSizes.radiusDef),
@@ -102,13 +114,22 @@ class CustomTextField extends StatelessWidget {
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppSizes.radiusDef),
-              borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+              borderSide: const BorderSide(
+                color: Color(0xFFEF4444),
+                width: 1.5,
+              ),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppSizes.radiusDef),
-              borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+              borderSide: const BorderSide(
+                color: Color(0xFFEF4444),
+                width: 1.5,
+              ),
             ),
-            errorStyle: const TextStyle(fontSize: 12, color: Colors.redAccent),
+            errorStyle: TextStyle(
+              fontSize: 12,
+              color: cs.error.withValues(alpha: 0.9),
+            ),
           ),
         ),
       ],

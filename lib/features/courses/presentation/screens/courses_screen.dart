@@ -87,7 +87,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
                           : Colors.white,
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-                        borderSide: BorderSide(color: AppColors.border),
+                        borderSide: BorderSide(
+                          color: isDark ? cs.outlineVariant : AppColors.border,
+                        ),
                       ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(AppSizes.radiusXl),
@@ -264,7 +266,9 @@ class _MyCourseCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: isDark ? cs.outlineVariant : AppColors.border,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(8),
@@ -376,7 +380,15 @@ class _MyCourseCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      SvgPicture.asset(Images.bookNoC, width: 12, height: 12),
+                      SvgPicture.asset(
+                        Images.bookNoC,
+                        width: 12,
+                        height: 12,
+                        colorFilter: ColorFilter.mode(
+                          isDark ? Colors.white : AppColors.primaryText,
+                          BlendMode.srcIn,
+                        ),
+                      ),
                       const SizedBox(width: 3),
                       Text(
                         lessons.isNotEmpty ? lessons : level,
@@ -395,12 +407,16 @@ class _MyCourseCard extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size(56, 22),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      backgroundColor: AppColors.surface,
+                      backgroundColor: isDark
+                          ? cs.surfaceContainerHighest
+                          : AppColors.surface,
                       foregroundColor: isDark
                           ? Colors.white
                           : AppColors.primaryText,
                       elevation: 0,
-                      side: const BorderSide(color: AppColors.border),
+                      side: BorderSide(
+                        color: isDark ? cs.outlineVariant : AppColors.border,
+                      ),
                     ),
                     child: const Text(
                       'Continue',
@@ -434,12 +450,18 @@ class _RecommendedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, AppRoutes.courseDetails),
+      onTap: () => Navigator.pushNamed(
+        context,
+        AppRoutes.courseDetails,
+        arguments: {'courseId': course.id},
+      ),
       child: Container(
         decoration: BoxDecoration(
           color: isDark ? cs.surfaceContainerLow : Colors.white,
           borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(
+            color: isDark ? cs.outlineVariant : AppColors.border,
+          ),
         ),
         padding: const EdgeInsets.all(12),
         child: Column(

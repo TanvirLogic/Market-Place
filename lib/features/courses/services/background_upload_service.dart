@@ -285,8 +285,8 @@ class BackgroundUploadService {
                 lastReportedPct = pct;
                 _sendProgress(service, item.id!, 'uploading', pct);
                 UploadNotificationService.showProgress(
-                  progress: pct,
-                  total: 100,
+                  progress: sent,
+                  total: total,
                   title: item.title,
                 );
               }

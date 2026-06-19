@@ -13,6 +13,7 @@ class Images {
   static const String bookIcon = 'assets/images/icons/action/book_icon.svg';
   static const String videoIcon = 'assets/images/icons/action/video_icon.svg';
   static const String blueTick = 'assets/images/profile_icons/blue_tick.png';
+  static const String profileUser = 'assets/images/profile_icons/user.png';
 
   // ============================= Social Icons ================================ //
   static const String websiteIcon = 'assets/images/icons/action/website.svg';

@@ -192,7 +192,7 @@ class MentorHeroBanner extends StatelessWidget {
                               color: cs.surfaceContainerHighest,
                               child: Center(
                                 child: Image.asset(
-                                  'assets/images/profile_icons/user.png',
+                                  Images.profileUser,
                                   fit: BoxFit.cover,
                                   width: 38,
                                   height: 38,
@@ -203,7 +203,7 @@ class MentorHeroBanner extends StatelessWidget {
                               color: cs.surfaceContainerHighest,
                               child: Center(
                                 child: Image.asset(
-                                  'assets/images/profile_icons/user.png',
+                                  Images.profileUser,
                                   fit: BoxFit.cover,
                                   width: 38,
                                   height: 38,

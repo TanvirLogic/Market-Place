@@ -188,7 +188,7 @@ class _MetricCard extends StatelessWidget {
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
         border: Border.all(
-          color: AppColors.border,
+          color: isDark ? cs.outlineVariant : AppColors.border,
         ),
       ),
       child: Row(
@@ -270,7 +270,7 @@ class _FilterPillRowState extends State<_FilterPillRow> {
                 border: Border.all(
                   color: isSelected
                       ? AppColors.themeColor
-                      : AppColors.border,
+                      : cs.outlineVariant,
                 ),
               ),
               child: Text(
@@ -321,7 +321,7 @@ class _TransactionCard extends StatelessWidget {
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),
         border: Border.all(
-          color: AppColors.border,
+          color: isDark ? cs.outlineVariant : AppColors.border,
         ),
       ),
       child: _TransactionTile(

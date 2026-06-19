@@ -18,6 +18,7 @@ import 'package:edtech/features/courses/providers/video_post_provider.dart';
 import 'package:edtech/features/courses/providers/course_feed_provider.dart';
 import 'package:edtech/features/courses/providers/video_queue_upload_provider.dart';
 import 'package:edtech/features/hub/providers/change_password_provider.dart';
+import 'package:edtech/features/hub/providers/mentor_dashboard_provider.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -52,6 +53,7 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => VideoPostProvider()),
         ChangeNotifierProvider(create: (_) => VideoQueueUploadProvider()),
         ChangeNotifierProvider(create: (_) => CourseFeedProvider()),
+        ChangeNotifierProvider(create: (_) => MentorDashboardProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) => MaterialApp(

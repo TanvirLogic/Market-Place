@@ -5,7 +5,18 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../../global/core/constants/images/images.dart';
 
 class MetricsGrid extends StatelessWidget {
-  const MetricsGrid({super.key});
+  final int? totalCourses;
+  final int? totalEnrollments;
+  final int? totalReviews;
+  final double? avgRating;
+
+  const MetricsGrid({
+    super.key,
+    this.totalCourses,
+    this.totalEnrollments,
+    this.totalReviews,
+    this.avgRating,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +30,7 @@ class MetricsGrid extends StatelessWidget {
             Expanded(
               child: MetricCard(
                 iconPath: 'assets/images/revenue_icons/book_icon.svg',
-                valueText: '12',
+                valueText: '${totalCourses ?? 12}',
                 labelText: 'Total Courses',
                 cs: cs,
                 isDark: isDark,
@@ -43,7 +54,7 @@ class MetricsGrid extends StatelessWidget {
             Expanded(
               child: MetricCard(
                 iconPath: Images.totalStudent,
-                valueText: '1234',
+                valueText: '${totalEnrollments ?? 1234}',
                 labelText: 'Total Student',
                 cs: cs,
                 isDark: isDark,
@@ -53,9 +64,9 @@ class MetricsGrid extends StatelessWidget {
             Expanded(
               child: MetricCard(
                 iconPath: Images.star,
-                valueText: '4.8',
-                trailingText: '(342)',
-                labelText: 'Reviews',
+                valueText: avgRating != null ? avgRating!.toStringAsFixed(1) : '${totalReviews ?? 0}',
+                trailingText: totalReviews != null && avgRating != null ? '($totalReviews)' : null,
+                labelText: avgRating != null ? 'Reviews' : 'Total Reviews',
                 cs: cs,
                 isDark: isDark,
               ),

@@ -1,19 +1,19 @@
 class LessonEntity {
+  final int id;
   final String title;
   final String duration;
-  final bool isLocked;
+  final bool isResource;
+  final String? videoUrl;
+  final String? fileUrl;
+  final String? fileType;
 
   const LessonEntity({
+    required this.id,
     required this.title,
     required this.duration,
-    this.isLocked = true,
+    required this.isResource,
+    this.videoUrl,
+    this.fileUrl,
+    this.fileType,
   });
-
-  factory LessonEntity.fromJson(Map<String, dynamic> json) {
-    return LessonEntity(
-      title: json['title'] ?? '',
-      duration: json['duration'] ?? '',
-      isLocked: json['is_locked'] == true || json['isLocked'] == true,
-    );
-  }
 }

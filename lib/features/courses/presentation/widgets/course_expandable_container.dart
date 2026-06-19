@@ -21,7 +21,7 @@ class CourseExpandableContainer extends StatelessWidget {
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFEFEFF0),
+          color: isDark ? cs.outlineVariant : const Color(0xFFEFEFF0),
         ),
       ),
       child: Column(
@@ -30,7 +30,7 @@ class CourseExpandableContainer extends StatelessWidget {
           Container(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF9F9F9),
+              color: isDark ? cs.surfaceContainerHighest : const Color(0xFFF9F9F9),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: Text(

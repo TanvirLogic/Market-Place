@@ -5,12 +5,18 @@ class Lesson {
   String title;
   final String duration;
   final LessonType type;
+  final String? videoUrl;
+  final String? fileUrl;
+  final String? fileType;
 
   Lesson({
     required this.id,
     required this.title,
     required this.duration,
     required this.type,
+    this.videoUrl,
+    this.fileUrl,
+    this.fileType,
   });
 }
 

@@ -1,4 +1,5 @@
 import 'package:edtech/global/core/constants/sizes.dart';
+import 'package:edtech/features/hub/providers/mentor_dashboard_provider.dart';
 import 'package:edtech/features/profile/mentor/providers/mentor_profile_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -17,13 +18,14 @@ class MentorDashboardScreen extends StatefulWidget {
 }
 
 class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
-  String? _expandedCourseId = 'course_1';
+  String? _expandedCourseId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<MentorProfileProvider>().fetchProfile();
+      context.read<MentorDashboardProvider>().fetchDashboard();
     });
   }
 
@@ -39,6 +41,9 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final dashboard = context.watch<MentorDashboardProvider>().dashboard;
+    final stats = dashboard?.stats;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -72,9 +77,14 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
                 name: context.watch<MentorProfileProvider>().profile?.name,
               ),
               const SizedBox(height: 24),
-              const BalanceBanner(balance: '৳32,688'),
+              const BalanceBanner(balance: '\u09F332,688'),
               const SizedBox(height: 16),
-              const MetricsGrid(),
+              MetricsGrid(
+                totalCourses: stats?.totalCourses,
+                totalEnrollments: stats?.totalEnrollments,
+                totalReviews: stats?.totalReviews,
+                avgRating: stats?.avgRating,
+              ),
               const SizedBox(height: 28),
               Text(
                 'Course Manager',
@@ -85,20 +95,42 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              CourseAccordion(
-                id: 'course_12',
-                courseId: 14,
-                title: 'Complete Flutter Development',
-                videosCount: 25,
-                resourcesCount: 8,
-                studentsCount: 50,
-                isExpanded: _expandedCourseId == 'course_11',
-                onExpansionChanged: (expanded) =>
-                    _onExpansionChanged('course_11', expanded),
-                grossAmount: '৳500.00',
-                platformFee: '-৳125.00',
-                netEarnings: '+৳375.00',
-              ),
+              if (dashboard != null && dashboard.courses.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Center(
+                    child: Text(
+                      'No courses yet',
+                      style: TextStyle(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ...?dashboard?.courses.map((course) {
+                  final id = 'course_${course.id}';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: CourseAccordion(
+                      id: id,
+                      courseId: course.id,
+                      title: course.title,
+                      videosCount: stats?.totalLessons ?? 0,
+                      resourcesCount: stats?.totalResources ?? 0,
+                      studentsCount: course.totalEnrollments,
+                      isExpanded: _expandedCourseId == id,
+                      onExpansionChanged: (expanded) =>
+                          _onExpansionChanged(id, expanded),
+                      grossAmount: '\u09F3500.00',
+                      platformFee: '-\u09F3125.00',
+                      netEarnings: '+\u09F3375.00',
+                    ),
+                  );
+                }),
               const SizedBox(height: 24),
             ],
           ),

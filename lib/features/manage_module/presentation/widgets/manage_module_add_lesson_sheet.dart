@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -73,7 +74,15 @@ class _ManageModuleAddLessonSheetState
     if (widget.lessonType == LessonType.video) {
       file = await _imagePicker.pickVideo(source: ImageSource.gallery);
     } else {
-      file = await _imagePicker.pickImage(source: ImageSource.gallery);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: [
+          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+        ],
+      );
+      if (result != null && result.files.single.path != null) {
+        file = XFile(result.files.single.path!);
+      }
     }
     if (file != null) setState(() => _selectedFile = file);
   }

@@ -63,8 +63,8 @@ class _EnrolledCourseBody extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 CourseStatsRow(
-                  videosCount: '${course.videosCount} Video',
-                  resourcesCount: '${course.resourcesCount} Resource',
+                  videosCount: '${course.totalLessons} Video',
+                  resourcesCount: '${course.totalResources} Resource',
                   isDark: isDark,
                   cs: cs,
                 ),
@@ -118,7 +118,7 @@ class _EnrolledCourseBody extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppSizes.radiusLg2),
                 ),
                 child: Text(
-                  'by ${course.instructorName}',
+                  'by ${course.mentorName}',
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black87,
                     fontSize: 12,
@@ -266,7 +266,7 @@ class _EnrolledTabContentViewState extends State<_EnrolledTabContentView> {
         const SizedBox(height: 24),
         if (_activeIndex == 0) ..._overviewContent(isDark, cs, course),
         if (_activeIndex == 1) _EnrolledModuleTabView(modules: course.modules),
-        if (_activeIndex == 2) CourseReviewsTabView(reviews: course.reviews),
+        if (_activeIndex == 2) CourseReviewsTabView(reviews: course.reviews, isDark: isDark, cs: cs, courseId: course.id),
       ],
     );
   }
@@ -385,7 +385,7 @@ class _EnrolledModuleTabViewState extends State<_EnrolledModuleTabView> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              module.lessonsCount,
+                              '${module.lessons.length} items',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: cs.onSurface.withValues(alpha: 0.6),

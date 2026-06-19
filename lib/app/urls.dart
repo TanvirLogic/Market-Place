@@ -51,8 +51,11 @@ class Urls {
   static const String courseModuleUploadUrl =
       '$_baseUrl/course/module/lesson/upload';
   static const String courseModuleLessonUrl = '$_baseUrl/course/module/lesson';
+  static const String courseModuleResourceUploadUrl = '$_baseUrl/course/module/resource/assets/upload';
+  static const String courseModuleResourceUrl = '$_baseUrl/course/module/resource';
   static const String courseLessonUrl = '$_baseUrl/course/lesson';
   static const String updateCourseUrl = '$_baseUrl/course';
+  static const String courseReviewUrl = '$_baseUrl/course/review';
 
   // ──────────────────────────────────────────────
   // Video Post Endpoints
@@ -83,4 +86,9 @@ class Urls {
   // Notification Endpoints
   // ──────────────────────────────────────────────
   static const String notificationsUrl = '$_baseUrl/notifications';
+
+  // ──────────────────────────────────────────────
+  // Dashboard Endpoints
+  // ──────────────────────────────────────────────
+  static const String mentorDashboardUrl = '$_baseUrl/mentor/dashboard';
 }

@@ -72,7 +72,9 @@ class _SocialPageState extends State<SocialPage> {
                 fillColor: isDark ? cs.surfaceContainerHighest : Colors.white,
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-                  borderSide: BorderSide(color: AppColors.border),
+                  borderSide: BorderSide(
+                    color: isDark ? cs.outlineVariant : AppColors.border,
+                  ),
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppSizes.radiusXl),
@@ -154,7 +156,9 @@ class _VideoFeedCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: isDark ? cs.outlineVariant : AppColors.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -217,7 +221,18 @@ class _VideoFeedCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(radius: 20, backgroundColor: cs.outlineVariant),
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: cs.outlineVariant,
+                child: ClipOval(
+                  child: Image.asset(
+                    Images.profileUser,
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -271,7 +286,13 @@ class _VideoFeedCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              Image.asset(Images.shareIcon, height: 20, width: 20),
+              Image.asset(
+                Images.shareIcon,
+                height: 20,
+                width: 20,
+                color: isDark ? cs.onSurface.withValues(alpha: 0.7) : null,
+                colorBlendMode: isDark ? BlendMode.srcIn : null,
+              ),
             ],
           ),
         ],
@@ -301,11 +322,24 @@ class _CreatorCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? cs.surfaceContainerLow : Colors.white,
         borderRadius: BorderRadius.circular(AppSizes.radiusLg2),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: isDark ? cs.outlineVariant : AppColors.border,
+        ),
       ),
       child: Row(
         children: [
-          CircleAvatar(radius: 26, backgroundColor: cs.outlineVariant),
+          CircleAvatar(
+            radius: 26,
+            backgroundColor: cs.outlineVariant,
+            child: ClipOval(
+              child: Image.asset(
+                Images.profileUser,
+                width: 52,
+                height: 52,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
