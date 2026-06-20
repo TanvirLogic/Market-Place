@@ -233,22 +233,12 @@ class _ManageModuleAddLessonSheetState
               padding: const EdgeInsets.only(bottom: 8),
               child: Column(
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _uploadProgress,
-                      minHeight: 6,
-                      backgroundColor: cs.primary.withValues(alpha: 0.15),
-                      valueColor: AlwaysStoppedAnimation(cs.primary),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
                   Text(
                     '${(_uploadProgress * 100).toInt()}%',
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurface.withValues(alpha: 0.6),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
                     ),
                   ),
                 ],

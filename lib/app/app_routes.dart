@@ -7,8 +7,7 @@ import 'package:edtech/features/auth/presentation/screens/reset_verification_scr
 import 'package:edtech/features/auth/presentation/screens/set_new_password_screen.dart';
 import 'package:edtech/features/auth/presentation/screens/password_success_screen.dart';
 import 'package:edtech/features/home/presentation/pages/main_nav_shell.dart';
-import 'package:edtech/features/courses/presentation/screens/course_details_screen.dart';
-import 'package:edtech/features/courses/presentation/screens/enrolled_course_screen.dart';
+import 'package:edtech/features/course_details/presentation/screens/course_details_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/payment_success_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/upload_course_screen.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
@@ -47,7 +46,6 @@ class AppRoutes {
   static const String uploadVideoPage = '/upload-video-page';
   static const String uploadCoursePage = '/upload-course-page';
   static const String courseDetails = '/course-details';
-  static const String enrolledCourse = '/enrolled-course';
   static const String paymentSuccess = '/payment-success';
   static const String notifications = '/notifications';
   static const String manageModule = '/manage-module';
@@ -104,8 +102,6 @@ class AppRoutes {
         return MaterialPageRoute(
           builder: (_) => CourseDetailsScreen(courseId: courseId),
         );
-      case enrolledCourse:
-        return MaterialPageRoute(builder: (_) => const EnrolledCourseScreen());
       case paymentSuccess:
         return MaterialPageRoute(builder: (_) => const PaymentSuccessScreen());
       case passwordAndSecurity:

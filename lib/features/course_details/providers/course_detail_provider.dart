@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:edtech/features/courses/data/models/course_model.dart';
-import 'package:edtech/features/courses/data/entities/review_entity.dart';
+import 'package:edtech/features/course_details/data/models/course_model.dart';
+import 'package:edtech/features/course_details/data/entities/review_entity.dart';
 import 'package:edtech/app/urls.dart';
 import 'package:edtech/app/setup_network_caller.dart';
 

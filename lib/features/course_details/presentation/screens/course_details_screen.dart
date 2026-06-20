@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/app/app_colors.dart';
@@ -7,18 +8,20 @@ import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/global/core/widgets/shimmer_widget.dart';
 import 'package:edtech/features/profile/student/presentation/widgets/video_player_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
+import 'package:edtech/global/core/providers/video_player_provider.dart';
+import 'package:edtech/global/core/services/course_progress_service.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../data/entities/course_entity.dart';
-import '../../data/entities/module_entity.dart';
-import 'package:edtech/features/courses/providers/course_detail_provider.dart';
-import '../widgets/course_expandable_container.dart';
-import '../widgets/course_reviews_tab_view.dart';
-import '../widgets/course_stats_row.dart';
-import '../widgets/instructor_profile_card.dart';
-import '../widgets/lesson_row_tile.dart';
+import 'package:edtech/features/course_details/data/entities/course_entity.dart';
+import 'package:edtech/features/course_details/data/entities/lesson_entity.dart';
+import 'package:edtech/features/course_details/data/entities/module_entity.dart';
+import 'package:edtech/features/course_details/providers/course_detail_provider.dart';
+import 'package:edtech/features/course_details/presentation/widgets/course_expandable_container.dart';
+import 'package:edtech/features/course_details/presentation/widgets/course_reviews_tab_view.dart';
+import 'package:edtech/features/course_details/presentation/widgets/course_stats_row.dart';
+import 'package:edtech/features/course_details/presentation/widgets/instructor_profile_card.dart';
+import 'package:edtech/features/course_details/presentation/widgets/lesson_row_tile.dart';
 
 class CourseDetailsScreen extends StatelessWidget {
   final int courseId;
@@ -43,12 +46,8 @@ class _CourseDetailsBody extends StatefulWidget {
 }
 
 class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
-  Player? _player;
-  VideoController? _videoController;
-  bool _isPlaying = false;
-  bool _isInitialized = false;
-  bool _hasError = false;
-  bool _showControls = true;
+  Timer? _introControlTimer;
+  bool _showIntroControls = true;
 
   @override
   void initState() {
@@ -61,68 +60,34 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
 
   @override
   void dispose() {
-    _player?.dispose();
+    _introControlTimer?.cancel();
     super.dispose();
   }
 
-  void _playIntroVideo(String url) {
-    _player?.dispose();
-    _player = null;
-    _videoController = null;
-    _isInitialized = false;
-    _isPlaying = false;
-    _hasError = false;
+  void _playIntroVideo(BuildContext context, String url, String title) {
+    final vp = context.read<VideoPlayerProvider>();
+    vp.openVideo(url: url, title: title);
+    setState(() => _showIntroControls = true);
+    _scheduleIntroControlHide();
+  }
 
-    final player = Player();
-    _player = player;
-    _videoController = VideoController(player);
+  void _stopIntroVideo(BuildContext context) {
+    context.read<VideoPlayerProvider>().dismiss();
+  }
 
-    player.stream.playing.listen((playing) {
-      if (!mounted) return;
-      setState(() {
-        _isInitialized = true;
-        _isPlaying = playing;
-        _showControls = true;
-      });
-    });
+  void _toggleIntroControls() {
+    setState(() => _showIntroControls = !_showIntroControls);
+    if (_showIntroControls) _scheduleIntroControlHide();
+  }
 
-    player.stream.error.listen((_) {
-      if (mounted) setState(() => _hasError = true);
-    });
-
-    player.open(Media(url)).then((_) => player.play()).catchError((_) {
-      if (mounted) setState(() => _hasError = true);
+  void _scheduleIntroControlHide() {
+    _introControlTimer?.cancel();
+    _introControlTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _showIntroControls = false);
     });
   }
 
-  void _stopIntroVideo() {
-    _player?.pause();
-    _player?.dispose();
-    _player = null;
-    _videoController = null;
-    if (mounted) {
-      setState(() {
-        _isInitialized = false;
-        _isPlaying = false;
-        _hasError = false;
-      });
-    }
-  }
-
-  void _togglePlayPause() {
-    if (_player == null || !_isInitialized) return;
-    if (_isPlaying) {
-      _player!.pause();
-      setState(() => _isPlaying = false);
-    } else {
-      _player!.play();
-      setState(() => _isPlaying = true);
-    }
-  }
-
-  void _openFullScreen(String url, String title) {
-    _player?.pause();
-    setState(() => _isPlaying = false);
+  void _openFullScreen(BuildContext context, String url, String title) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -178,7 +143,7 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                     AppSizes.horizontalPadding,
                     8,
                     AppSizes.horizontalPadding,
-                    110,
+                    course.isStudent ? 24 : 110,
                   ),
                   physics: const BouncingScrollPhysics(),
                   child: Column(
@@ -235,6 +200,22 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                           ],
                         ),
                       ),
+                      if (course.isStudent) ...[
+                        const SizedBox(height: 20),
+                        _CourseProgressCard(
+                          isDark: isDark,
+                          cs: cs,
+                          courseId: course.id,
+                          totalVideoLessons: course.modules.fold<int>(
+                            0,
+                            (sum, m) => sum +
+                                m.lessons
+                                    .where((l) =>
+                                        !l.isResource && l.videoUrl != null)
+                                    .length,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       _CourseTabContentView(
                         course: course,
@@ -281,13 +262,15 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
   }
 
   Widget _buildThumbnail(ColorScheme cs, bool isDark, CourseEntity course) {
+    final vp = context.watch<VideoPlayerProvider>();
     final hasIntroVideo = course.introVideoUrl.isNotEmpty;
+    final isIntroActive = vp.isActive && vp.currentVideoUrl == course.introVideoUrl;
 
-    if (_isInitialized && _player != null) {
+    if (isIntroActive && !vp.hasError) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: GestureDetector(
-          onTap: () => setState(() => _showControls = !_showControls),
+          onTap: _toggleIntroControls,
           child: SizedBox(
             height: 184,
             child: Container(
@@ -299,26 +282,34 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (_hasError)
-                    const Center(
-                      child: Icon(
-                        Icons.videocam_off,
-                        color: Colors.white54,
-                        size: 32,
+                  Video(
+                    controller: vp.controller,
+                    fit: BoxFit.contain,
+                    controls: null,
+                  ),
+                  if (vp.isBuffering)
+                    Positioned.fill(
+                      child: Center(
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
-                    )
-                  else
-                    Video(
-                      controller: _videoController!,
-                      fit: BoxFit.contain,
-                      controls: null,
                     ),
-                  if (_showControls) ...[
+                  if (_showIntroControls) ...[
                     Positioned(
                       top: 4,
                       right: 4,
                       child: GestureDetector(
-                        onTap: _stopIntroVideo,
+                        onTap: () => _stopIntroVideo(context),
                         child: Container(
                           width: 28,
                           height: 28,
@@ -336,7 +327,7 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                     ),
                     Center(
                       child: GestureDetector(
-                        onTap: _togglePlayPause,
+                        onTap: vp.togglePlayPause,
                         child: Container(
                           width: 48,
                           height: 48,
@@ -345,7 +336,9 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            _isPlaying ? Icons.pause : Icons.play_arrow_rounded,
+                            vp.isPlaying
+                                ? Icons.pause
+                                : Icons.play_arrow_rounded,
                             color: Colors.white,
                             size: 28,
                           ),
@@ -357,7 +350,7 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                       right: 4,
                       child: GestureDetector(
                         onTap: () =>
-                            _openFullScreen(course.introVideoUrl, course.title),
+                            _openFullScreen(context, course.introVideoUrl, course.title),
                         child: Container(
                           width: 28,
                           height: 28,
@@ -386,7 +379,7 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: hasIntroVideo
-            ? () => _playIntroVideo(course.introVideoUrl)
+            ? () => _playIntroVideo(context, course.introVideoUrl, course.title)
             : null,
         child: SizedBox(
           height: 184,
@@ -543,6 +536,7 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
             isDark: isDark,
             cs: cs,
             isStudent: course.isStudent,
+            courseId: course.id,
           ),
         if (_activeIndex == 2)
           CourseReviewsTabView(
@@ -670,12 +664,14 @@ class _NativeModuleTabView extends StatefulWidget {
   final bool isDark;
   final ColorScheme cs;
   final bool isStudent;
+  final int courseId;
 
   const _NativeModuleTabView({
     required this.modules,
     required this.isDark,
     required this.cs,
     required this.isStudent,
+    required this.courseId,
   });
 
   @override
@@ -829,12 +825,27 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
                                 );
                               } else if (!lesson.isResource &&
                                   lesson.videoUrl != null) {
+                                final next = _findNextLesson(
+                                  moduleIndex: index,
+                                  lessonIndex: lessonIndex,
+                                );
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => VideoPlayerScreen(
                                       videoUrl: lesson.videoUrl!,
                                       title: lesson.title,
+                                      lessonId: lesson.id,
+                                      courseId: widget.courseId,
+                                      onCompleted: () {
+                                        if (next != null && mounted) {
+                                          setState(() {
+                                            _activeLessonTitle = next.title;
+                                          });
+                                        }
+                                      },
+                                      nextVideoUrl: next?.videoUrl,
+                                      nextVideoTitle: next?.title,
                                     ),
                                   ),
                                 );
@@ -852,6 +863,27 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
         );
       }),
     );
+  }
+
+  LessonEntity? _findNextLesson({
+    required int moduleIndex,
+    required int lessonIndex,
+  }) {
+    final modules = widget.modules;
+    final currentModule = modules[moduleIndex];
+
+    if (lessonIndex + 1 < currentModule.lessons.length) {
+      final next = currentModule.lessons[lessonIndex + 1];
+      if (!next.isResource && next.videoUrl != null) return next;
+    }
+
+    for (int m = moduleIndex + 1; m < modules.length; m++) {
+      for (final l in modules[m].lessons) {
+        if (!l.isResource && l.videoUrl != null) return l;
+      }
+    }
+
+    return null;
   }
 }
 
@@ -970,6 +1002,105 @@ class _CourseDetailsSkeleton extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CourseProgressCard extends StatefulWidget {
+  final bool isDark;
+  final ColorScheme cs;
+  final int courseId;
+  final int totalVideoLessons;
+
+  const _CourseProgressCard({
+    required this.isDark,
+    required this.cs,
+    required this.courseId,
+    required this.totalVideoLessons,
+  });
+
+  @override
+  State<_CourseProgressCard> createState() => _CourseProgressCardState();
+}
+
+class _CourseProgressCardState extends State<_CourseProgressCard> {
+  double _progress = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    final p = await CourseProgressService.getProgress(
+      widget.courseId,
+      widget.totalVideoLessons,
+    );
+    if (mounted) setState(() => _progress = p);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final percent = (_progress * 100).round();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Course Progress',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            color: widget.cs.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: widget.isDark
+                ? widget.cs.surfaceContainerHighest
+                : Colors.white,
+            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            border: Border.all(
+              color: AppColors.border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppSizes.radiusXs),
+                  child: SizedBox(
+                    height: 12,
+                    child: Stack(
+                      children: [
+                        Container(color: AppColors.fill),
+                        FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: _progress.clamp(0.0, 1.0),
+                          child: Container(color: AppColors.themeColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '$percent%',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.themeColor,
+                ),
+              ),
+            ],
           ),
         ),
       ],

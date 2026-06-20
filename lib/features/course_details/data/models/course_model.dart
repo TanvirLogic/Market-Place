@@ -1,6 +1,6 @@
-import 'package:edtech/features/courses/data/entities/course_entity.dart';
-import 'package:edtech/features/courses/data/entities/module_entity.dart';
-import 'package:edtech/features/courses/data/entities/review_entity.dart';
+import 'package:edtech/features/course_details/data/entities/course_entity.dart';
+import 'package:edtech/features/course_details/data/entities/module_entity.dart';
+import 'package:edtech/features/course_details/data/entities/review_entity.dart';
 
 class CourseModel extends CourseEntity {
   const CourseModel({

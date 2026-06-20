@@ -211,6 +211,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 lessons: '',
                 isFree: first.type == 'FREE',
                 progress: 0.0,
+                courseId: first.id,
               ),
             ),
             if (second != null) ...[
@@ -224,6 +225,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                   lessons: '',
                   isFree: second.type == 'FREE',
                   progress: 0.0,
+                  courseId: second.id,
                 ),
               ),
             ],
@@ -243,6 +245,7 @@ class _MyCourseCard extends StatelessWidget {
   final String lessons;
   final bool isFree;
   final double progress;
+  final int courseId;
 
   const _MyCourseCard({
     required this.cs,
@@ -252,6 +255,7 @@ class _MyCourseCard extends StatelessWidget {
     required this.lessons,
     required this.isFree,
     required this.progress,
+    required this.courseId,
   });
 
   Color _progressColor() {
@@ -402,8 +406,11 @@ class _MyCourseCard extends StatelessWidget {
                     ],
                   ),
                   ElevatedButton(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, AppRoutes.enrolledCourse),
+                    onPressed: () => Navigator.pushNamed(
+                      context,
+                      AppRoutes.courseDetails,
+                      arguments: {'courseId': courseId},
+                    ),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size(56, 22),
                       padding: const EdgeInsets.symmetric(horizontal: 8),

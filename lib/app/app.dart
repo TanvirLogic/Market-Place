@@ -10,15 +10,15 @@ import 'package:edtech/features/profile/mentor/providers/mentor_profile_provider
 import 'package:edtech/features/profile/student/providers/edit_profile_provider.dart';
 import 'package:edtech/features/profile/avatar/providers/avatar_upload_provider.dart';
 import 'package:edtech/features/profile/avatar/providers/cover_upload_provider.dart';
-import 'package:edtech/features/courses/providers/course_detail_provider.dart';
+import 'package:edtech/features/course_details/providers/course_detail_provider.dart';
 import 'package:edtech/features/courses/providers/course_list_provider.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
-import 'package:edtech/features/courses/providers/enrolled_course_provider.dart';
 import 'package:edtech/features/courses/providers/video_post_provider.dart';
 import 'package:edtech/features/courses/providers/course_feed_provider.dart';
 import 'package:edtech/features/courses/providers/video_queue_upload_provider.dart';
 import 'package:edtech/features/hub/providers/change_password_provider.dart';
 import 'package:edtech/features/hub/providers/mentor_dashboard_provider.dart';
+import 'package:edtech/global/core/providers/video_player_provider.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -48,12 +48,12 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CourseDetailProvider()),
         ChangeNotifierProvider(create: (_) => CourseListProvider()),
         ChangeNotifierProvider(create: (_) => CourseUploadProvider()),
-        ChangeNotifierProvider(create: (_) => EnrolledCourseProvider()),
         ChangeNotifierProvider(create: (_) => ChangePasswordProvider()),
         ChangeNotifierProvider(create: (_) => VideoPostProvider()),
         ChangeNotifierProvider(create: (_) => VideoQueueUploadProvider()),
         ChangeNotifierProvider(create: (_) => CourseFeedProvider()),
         ChangeNotifierProvider(create: (_) => MentorDashboardProvider()),
+        ChangeNotifierProvider(create: (_) => VideoPlayerProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) => MaterialApp(

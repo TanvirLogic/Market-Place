@@ -109,7 +109,11 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
     _hasError = false;
     setState(() => _activeIndex = index);
 
-    final player = Player();
+    final player = Player(
+      configuration: const PlayerConfiguration(
+        bufferSize: 64 * 1024 * 1024,
+      ),
+    );
     _player = player;
     _videoController = VideoController(player);
 
