@@ -61,6 +61,7 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
   @override
   void dispose() {
     _introControlTimer?.cancel();
+    context.read<VideoPlayerProvider>().dismiss();
     super.dispose();
   }
 
@@ -102,7 +103,12 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
     final cs = theme.colorScheme;
     final isDark = cs.brightness == Brightness.dark;
 
-    return Consumer<CourseDetailProvider>(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        context.read<VideoPlayerProvider>().dismiss();
+      },
+      child: Consumer<CourseDetailProvider>(
       builder: (context, provider, _) {
         final course = provider.course;
         if (course == null) {
@@ -149,7 +155,16 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _buildThumbnail(cs, isDark, course),
+                      _IntroVideoSection(
+                        course: course,
+                        isDark: isDark,
+                        cs: cs,
+                        showControls: _showIntroControls,
+                        onPlay: () => _playIntroVideo(context, course.introVideoUrl, course.title),
+                        onStop: () => _stopIntroVideo(context),
+                        onToggleControls: _toggleIntroControls,
+                        onFullScreen: () => _openFullScreen(context, course.introVideoUrl, course.title),
+                      ),
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -243,6 +258,7 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
           ),
         );
       },
+      ),
     );
   }
 
@@ -261,203 +277,230 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
     );
   }
 
-  Widget _buildThumbnail(ColorScheme cs, bool isDark, CourseEntity course) {
-    final vp = context.watch<VideoPlayerProvider>();
-    final hasIntroVideo = course.introVideoUrl.isNotEmpty;
-    final isIntroActive = vp.isActive && vp.currentVideoUrl == course.introVideoUrl;
 
-    if (isIntroActive && !vp.hasError) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: GestureDetector(
-          onTap: _toggleIntroControls,
-          child: SizedBox(
-            height: 184,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                color: Colors.black,
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Video(
-                    controller: vp.controller,
-                    fit: BoxFit.contain,
-                    controls: null,
+}
+
+class _IntroVideoSection extends StatelessWidget {
+  final CourseEntity course;
+  final bool isDark;
+  final ColorScheme cs;
+  final bool showControls;
+  final VoidCallback onPlay;
+  final VoidCallback onStop;
+  final VoidCallback onToggleControls;
+  final VoidCallback onFullScreen;
+
+  const _IntroVideoSection({
+    required this.course,
+    required this.isDark,
+    required this.cs,
+    required this.showControls,
+    required this.onPlay,
+    required this.onStop,
+    required this.onToggleControls,
+    required this.onFullScreen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<VideoPlayerProvider>(
+      builder: (context, vp, _) {
+        final hasIntroVideo = course.introVideoUrl.isNotEmpty;
+        final isIntroActive =
+            vp.isActive && vp.currentVideoUrl == course.introVideoUrl;
+
+        if (isIntroActive && !vp.hasError) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: GestureDetector(
+              onTap: onToggleControls,
+              child: SizedBox(
+                height: 184,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.black,
                   ),
-                  if (vp.isBuffering)
-                    Positioned.fill(
-                      child: Center(
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Video(
+                        controller: vp.controller,
+                        fit: BoxFit.contain,
+                        controls: null,
+                      ),
+                      if (vp.isBuffering)
+                        Positioned.fill(
+                          child: Center(
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                        ),
+                      if (showControls) ...[
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: onStop,
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                color: Color(0x99000000),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Center(
+                          child: GestureDetector(
+                            onTap: vp.togglePlayPause,
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                vp.isPlaying
+                                    ? Icons.pause
+                                    : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: onFullScreen,
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                color: Color(0x99000000),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.fullscreen,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: hasIntroVideo ? onPlay : null,
+            child: SizedBox(
+              height: 184,
+              child: Stack(
+                children: [
+                  if (course.thumbnailUrl.isNotEmpty)
+                    Image.network(
+                      course.thumbnailUrl,
+                      width: double.infinity,
+                      height: 184,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        height: 184,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              cs.primary.withValues(alpha: 0.6),
+                              cs.primary.withValues(alpha: 0.2),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
                         ),
                       ),
-                    ),
-                  if (_showIntroControls) ...[
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: GestureDetector(
-                        onTap: () => _stopIntroVideo(context),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: const BoxDecoration(
-                            color: Color(0x99000000),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 16,
-                          ),
+                    )
+                  else
+                    Container(
+                      height: 184,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            cs.primary.withValues(alpha: 0.6),
+                            cs.primary.withValues(alpha: 0.2),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
                       ),
                     ),
-                    Center(
-                      child: GestureDetector(
-                        onTap: vp.togglePlayPause,
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.4),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            vp.isPlaying
-                                ? Icons.pause
-                                : Icons.play_arrow_rounded,
-                            color: Colors.white,
-                            size: 28,
-                          ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            isDark ? cs.surfaceContainerHighest : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'by ${course.mentorName}',
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                    Positioned(
-                      bottom: 4,
-                      right: 4,
-                      child: GestureDetector(
-                        onTap: () =>
-                            _openFullScreen(context, course.introVideoUrl, course.title),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: const BoxDecoration(
-                            color: Color(0x99000000),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.fullscreen,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
+                  ),
+                  Center(
+                    child: CircleAvatar(
+                      radius: 28,
+                      backgroundColor:
+                          (isDark ? cs.surfaceContainerHighest : Colors.white)
+                              .withValues(alpha: 0.9),
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        color: isDark ? Colors.white : Colors.black87,
+                        size: 36,
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
           ),
-        ),
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: hasIntroVideo
-            ? () => _playIntroVideo(context, course.introVideoUrl, course.title)
-            : null,
-        child: SizedBox(
-          height: 184,
-          child: Stack(
-            children: [
-              if (course.thumbnailUrl.isNotEmpty)
-                Image.network(
-                  course.thumbnailUrl,
-                  width: double.infinity,
-                  height: 184,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
-                    height: 184,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          cs.primary.withValues(alpha: 0.6),
-                          cs.primary.withValues(alpha: 0.2),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  height: 184,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        cs.primary.withValues(alpha: 0.6),
-                        cs.primary.withValues(alpha: 0.2),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                ),
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark ? cs.surfaceContainerHighest : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'by ${course.mentorName}',
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              Center(
-                child: CircleAvatar(
-                  radius: 28,
-                  backgroundColor:
-                      (isDark ? cs.surfaceContainerHighest : Colors.white)
-                          .withValues(alpha: 0.9),
-                  child: Icon(
-                    Icons.play_arrow_rounded,
-                    color: isDark ? Colors.white : Colors.black87,
-                    size: 36,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -573,8 +616,8 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
         isDark: isDark,
         cs: cs,
         title: 'Description',
-        child: Text(
-          '\u2022  ${course.description.isNotEmpty ? course.description : "No description available"}',
+        child: _ExpandableText(
+          text: '\u2022  ${course.description.isNotEmpty ? course.description : "No description available"}',
           style: TextStyle(
             color: cs.onSurface.withValues(alpha: 0.6),
             fontSize: 14,
@@ -588,22 +631,13 @@ class _CourseTabContentViewState extends State<_CourseTabContentView> {
         cs: cs,
         title: 'Requirements',
         child: requirements.isNotEmpty
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: requirements
-                    .map(
-                      (r) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          '\u2022  $r',
-                          style: TextStyle(
-                            color: cs.onSurface.withValues(alpha: 0.6),
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
+            ? _ExpandableText(
+                text: requirements.map((r) => '\u2022  $r').join('\n'),
+                style: TextStyle(
+                  color: cs.onSurface.withValues(alpha: 0.6),
+                  fontSize: 14,
+                  height: 1.5,
+                ),
               )
             : Text(
                 'No requirements',
@@ -680,11 +714,12 @@ class _NativeModuleTabView extends StatefulWidget {
 
 class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
   String _activeLessonTitle = '';
-  final Set<int> _expandedModules = {0};
+  int? _expandedModuleIndex;
 
   @override
   void initState() {
     super.initState();
+    _expandedModuleIndex = widget.modules.isNotEmpty ? 0 : null;
     if (widget.modules.isNotEmpty && widget.modules[0].lessons.isNotEmpty) {
       _activeLessonTitle = widget.modules[0].lessons[0].title;
     }
@@ -710,7 +745,7 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
     return Column(
       children: List.generate(widget.modules.length, (index) {
         final module = widget.modules[index];
-        final isExpanded = _expandedModules.contains(index);
+        final isExpanded = _expandedModuleIndex == index;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -726,11 +761,7 @@ class _NativeModuleTabViewState extends State<_NativeModuleTabView> {
               InkWell(
                 onTap: () {
                   setState(() {
-                    if (isExpanded) {
-                      _expandedModules.remove(index);
-                    } else {
-                      _expandedModules.add(index);
-                    }
+                    _expandedModuleIndex = isExpanded ? null : index;
                   });
                 },
                 borderRadius: isExpanded
@@ -1104,6 +1135,78 @@ class _CourseProgressCardState extends State<_CourseProgressCard> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ExpandableText extends StatefulWidget {
+  final String text;
+  final TextStyle? style;
+  final int maxLines;
+
+  const _ExpandableText({
+    required this.text,
+    this.style,
+    this.maxLines = 4,
+  });
+
+  @override
+  State<_ExpandableText> createState() => _ExpandableTextState();
+}
+
+class _ExpandableTextState extends State<_ExpandableText> {
+  bool _expanded = false;
+  bool _isOverflowing = false;
+  double? _lastWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (_lastWidth != constraints.maxWidth) {
+          _lastWidth = constraints.maxWidth;
+          final tp = TextPainter(
+            text: TextSpan(
+              text: widget.text,
+              style: widget.style ?? DefaultTextStyle.of(context).style,
+            ),
+            maxLines: widget.maxLines,
+            textDirection: TextDirection.ltr,
+          );
+          tp.layout(maxWidth: constraints.maxWidth);
+          if (tp.didExceedMaxLines != _isOverflowing) {
+            _isOverflowing = tp.didExceedMaxLines;
+          }
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.text,
+              maxLines: _expanded ? null : widget.maxLines,
+              overflow: _expanded ? null : TextOverflow.clip,
+              style: widget.style,
+            ),
+            if (_isOverflowing)
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _expanded ? 'Show Less' : 'See More',
+                    style: const TextStyle(
+                      color: AppColors.themeColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

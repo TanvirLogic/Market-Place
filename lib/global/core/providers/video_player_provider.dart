@@ -218,8 +218,7 @@ class VideoPlayerProvider extends ChangeNotifier {
 
   void stop() {
     _saveTimer?.cancel();
-    _player.pause();
-    _player.seek(Duration.zero);
+    _player.stop();
     isActive = false;
     isInitialized = false;
     currentVideoUrl = null;
@@ -234,8 +233,7 @@ class VideoPlayerProvider extends ChangeNotifier {
 
   void dismiss() {
     _saveTimer?.cancel();
-    _player.pause();
-    _player.seek(Duration.zero);
+    _player.stop();
     isActive = false;
     isInitialized = false;
     currentVideoUrl = null;

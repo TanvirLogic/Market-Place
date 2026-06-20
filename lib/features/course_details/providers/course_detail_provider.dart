@@ -97,6 +97,15 @@ class CourseDetailProvider extends ChangeNotifier {
       return newReviewData as Map<String, dynamic>?;
     }
 
+    if (response.responseCode == 400) {
+      final data = response.responseData;
+      if (data is Map<String, dynamic> && data['success'] == false) {
+        _reviewError = 'You are not eligible to comment';
+        notifyListeners();
+        return {'_error': _reviewError};
+      }
+    }
+
     final errors = response.responseData['errors'];
     if (errors is Map<String, dynamic>) {
       final reviewErrors = errors['review'];

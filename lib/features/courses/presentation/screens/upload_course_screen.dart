@@ -1,5 +1,4 @@
 import 'package:edtech/app/app_colors.dart';
-import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
@@ -63,7 +62,12 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
         ? double.tryParse(_priceCtrl.text.trim()) ?? 0
         : 0.0;
 
-    final success = await provider.uploadCourse(
+    if (mounted) {
+      Navigator.of(context).pop();
+      ToastService.showSuccess('Your Course is being uploaded');
+    }
+
+    provider.uploadCourse(
       title: _titleCtrl.text,
       description: _descCtrl.text,
       shortDescription: _shortDescCtrl.text,
@@ -73,16 +77,6 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
       type: _courseType,
       price: price,
     );
-
-    if (success && mounted) {
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
-      Navigator.of(context).pushNamed(
-        AppRoutes.manageModule,
-        arguments: {'courseId': provider.createdCourseId},
-      );
-    }
   }
 
   @override

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
+import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/providers/video_player_provider.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -35,6 +36,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Timer? _controlHideTimer;
   bool _showControls = true;
   bool _autoPlayNext = false;
+
+  bool _isOrientationLocked = false;
 
   @override
   void initState() {
@@ -126,6 +129,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '${d.inHours > 0 ? '${d.inHours}:' : ''}$minutes:$seconds';
+  }
+
+  void _toggleOrientationLock() {
+    setState(() {
+      _isOrientationLocked = !_isOrientationLocked;
+    });
+  }
+
+  void _showVideoSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _VideoSettingsSheet(
+        isOrientationLocked: _isOrientationLocked,
+        onToggleOrientationLock: _toggleOrientationLock,
+      ),
+    );
   }
 
   void _onBack() {
@@ -280,27 +303,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: _onBack,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                          onPressed: _onBack,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.settings_rounded, color: Colors.white),
+                          onPressed: _showVideoSettings,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
               ),
             ),
 
@@ -355,9 +382,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     children: [
                       SliderTheme(
                         data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: Colors.white,
+                          activeTrackColor: AppColors.themeColor,
                           inactiveTrackColor: Colors.white30,
-                          thumbColor: Colors.white,
+                          thumbColor: AppColors.themeColor,
                           trackHeight: 2,
                           thumbShape: const RoundSliderThumbShape(
                             enabledThumbRadius: 5,
@@ -510,6 +537,219 @@ class _AutoNextToggle extends StatelessWidget {
             size: 18,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VideoSettingsSheet extends StatefulWidget {
+  final bool isOrientationLocked;
+  final VoidCallback onToggleOrientationLock;
+
+  const _VideoSettingsSheet({
+    required this.isOrientationLocked,
+    required this.onToggleOrientationLock,
+  });
+
+  @override
+  State<_VideoSettingsSheet> createState() => _VideoSettingsSheetState();
+}
+
+class _VideoSettingsSheetState extends State<_VideoSettingsSheet> {
+  static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+  String? _expandedSection;
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<VideoPlayerProvider>(
+      builder: (context, provider, _) {
+        return SingleChildScrollView(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.of(context).padding.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _SettingsCategory(
+                icon: Icons.speed,
+                title: 'Playback Speed',
+                subtitle: '${provider.rate}x',
+                isExpanded: _expandedSection == 'speed',
+                onTap: () {
+                  setState(() {
+                    _expandedSection =
+                        _expandedSection == 'speed' ? null : 'speed';
+                  });
+                },
+                children: _speeds.map((s) => _SettingsTile(
+                  label: '${s}x',
+                  isSelected: provider.rate == s,
+                  onTap: () {
+                    provider.setRate(s);
+                    Navigator.pop(context);
+                  },
+                )).toList(),
+              ),
+              const SizedBox(height: 4),
+              _SettingsCategory(
+                icon: Icons.screen_lock_rotation,
+                title: 'Lock Orientation',
+                subtitle: null,
+                isExpanded: false,
+                trailing: SizedBox(
+                  height: 28,
+                  child: Switch.adaptive(
+                    value: widget.isOrientationLocked,
+                    onChanged: (_) {
+                      widget.onToggleOrientationLock();
+                      Navigator.pop(context);
+                    },
+                    activeTrackColor: AppColors.themeColor,
+                  ),
+                ),
+                onTap: () {
+                  widget.onToggleOrientationLock();
+                  Navigator.pop(context);
+                },
+                children: null,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SettingsCategory extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final bool isExpanded;
+  final VoidCallback onTap;
+  final Widget? trailing;
+  final List<Widget>? children;
+
+  const _SettingsCategory({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    required this.isExpanded,
+    required this.onTap,
+    this.trailing,
+    this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                if (subtitle != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      subtitle!,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                if (trailing != null) trailing!,
+                if (children != null)
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.white.withValues(alpha: 0.5),
+                    size: 20,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (isExpanded && children != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 32, bottom: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: children!,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SettingsTile({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? AppColors.themeColor : Colors.white,
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+            if (isSelected)
+              Icon(Icons.check, color: AppColors.themeColor, size: 20),
+          ],
+        ),
       ),
     );
   }

@@ -1,8 +1,9 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:edtech/global/core/providers/video_player_provider.dart';
 import '../../data/entities/user_profile_entity.dart';
 import 'video_player_screen.dart';
 
@@ -27,13 +28,6 @@ class VideosHorizontalListView extends StatefulWidget {
 
 class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
   int _activeIndex = -1;
-
-  Player? _player;
-  VideoController? _videoController;
-  bool _isInitialized = false;
-  bool _isPlaying = false;
-  bool _isDisposed = false;
-  bool _hasError = false;
   bool _showControls = true;
 
   final Map<int, Uint8List> _thumbnailCache = {};
@@ -53,6 +47,12 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
     }
   }
 
+  @override
+  void dispose() {
+    context.read<VideoPlayerProvider>().dismiss();
+    super.dispose();
+  }
+
   Future<void> _generateThumbnails() async {
     for (int i = 0; i < widget.videos.length; i++) {
       if (_thumbnailCache.containsKey(i)) continue;
@@ -69,22 +69,17 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
           _thumbnailCache[i] = bytes;
           setState(() {});
         }
-      } catch (_) {
-      }
+      } catch (_) {}
     }
-  }
-
-  @override
-  void dispose() {
-    _isDisposed = true;
-    _player?.dispose();
-    super.dispose();
   }
 
   void _startControlHideTimer() {
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && _isPlaying && !_isDisposed) {
-        setState(() => _showControls = false);
+      if (mounted) {
+        final provider = context.read<VideoPlayerProvider>();
+        if (provider.isPlaying) {
+          setState(() => _showControls = false);
+        }
       }
     });
   }
@@ -100,95 +95,44 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
     final video = widget.videos[index];
     if (!_isVideoUrl(video.video)) return;
 
-    _player?.pause();
-    _player?.dispose();
-    _player = null;
-    _videoController = null;
-    _isInitialized = false;
-    _isPlaying = false;
-    _hasError = false;
-    setState(() => _activeIndex = index);
-
-    final player = Player(
-      configuration: const PlayerConfiguration(
-        bufferSize: 64 * 1024 * 1024,
-      ),
+    context.read<VideoPlayerProvider>().openVideo(
+      url: video.video,
+      title: video.title,
     );
-    _player = player;
-    _videoController = VideoController(player);
-
-    player.stream.playing.listen((playing) {
-      if (!mounted || _isDisposed) return;
-      setState(() {
-        _isInitialized = true;
-        _isPlaying = playing;
-        _showControls = true;
-      });
-      if (playing) _startControlHideTimer();
+    setState(() {
+      _activeIndex = index;
+      _showControls = true;
     });
-
-    player.stream.error.listen((_) {
-      if (mounted && !_isDisposed) {
-        setState(() => _hasError = true);
-      }
-    });
-
-    player
-        .open(Media(video.video))
-        .then((_) {
-          player.play();
-        })
-        .catchError((_) {
-          if (mounted && !_isDisposed) {
-            setState(() => _hasError = true);
-          }
-        });
+    _startControlHideTimer();
   }
 
   void _stopActive() {
-    _player?.pause();
-    _player?.dispose();
-    _player = null;
-    _videoController = null;
+    context.read<VideoPlayerProvider>().dismiss();
     if (mounted) {
       setState(() {
         _activeIndex = -1;
-        _isInitialized = false;
-        _isPlaying = false;
-        _hasError = false;
+        _showControls = true;
       });
     }
   }
 
   void _togglePlayPause() {
-    if (_player == null || !_isInitialized) return;
-    if (_isPlaying) {
-      _player!.pause();
-      setState(() {
-        _isPlaying = false;
-        _showControls = true;
-      });
-    } else {
-      _player!.play();
-      setState(() => _isPlaying = true);
+    context.read<VideoPlayerProvider>().togglePlayPause();
+    if (mounted) {
+      setState(() => _showControls = true);
       _startControlHideTimer();
     }
   }
 
   void _openFullScreen() {
-    if (_activeIndex < 0 || _player == null) return;
+    if (_activeIndex < 0) return;
 
-    _player!.pause();
-    setState(() {
-      _isPlaying = false;
-      _showControls = true;
-    });
-
+    final video = widget.videos[_activeIndex];
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
-          videoUrl: widget.videos[_activeIndex].video,
-          title: widget.videos[_activeIndex].title,
+          videoUrl: video.video,
+          title: video.title,
         ),
       ),
     );
@@ -197,6 +141,14 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
   @override
   Widget build(BuildContext context) {
     if (widget.videos.isEmpty) return const SizedBox.shrink();
+
+    final provider = context.watch<VideoPlayerProvider>();
+
+    if (_activeIndex >= 0 && !provider.isActive && provider.currentVideoUrl == null) {
+      Future.microtask(() {
+        if (mounted) setState(() => _activeIndex = -1);
+      });
+    }
 
     return SizedBox(
       height: 71 + 8 + 40,
@@ -221,11 +173,12 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
                     video: video,
                     thumbnailBytes: _thumbnailCache[index],
                     isActive: isActive,
-                    isInitialized: _isInitialized,
-                    isPlaying: _isPlaying,
-                    hasError: _hasError,
-                    showControls: _showControls,
-                    videoController: _videoController,
+                    isInitialized: isActive ? provider.isInitialized : false,
+                    isPlaying: isActive ? provider.isPlaying : false,
+                    hasError: isActive ? provider.hasError : false,
+                    showControls: isActive ? _showControls : false,
+                    videoController:
+                        isActive && provider.isInitialized ? provider.controller : null,
                     onTap: () => _playAtIndex(index),
                     onPlayPause: isActive ? _togglePlayPause : null,
                     onFullScreen: isActive ? _openFullScreen : null,

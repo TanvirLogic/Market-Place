@@ -38,9 +38,9 @@ class BackgroundUploadService {
         autoStart: false,
         isForegroundMode: true,
         autoStartOnBoot: false,
-        notificationChannelId: 'upload_progress',
-        initialNotificationTitle: 'Upload Service',
-        initialNotificationContent: 'Preparing...',
+        notificationChannelId: 'upload_foreground',
+        initialNotificationTitle: 'Upload in progress',
+        initialNotificationContent: '',
         foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
@@ -64,8 +64,8 @@ class BackgroundUploadService {
 
     if (service is AndroidServiceInstance) {
       service.setForegroundNotificationInfo(
-        title: 'Upload Service',
-        content: 'Running',
+        title: 'Upload in progress',
+        content: '',
       );
     }
 

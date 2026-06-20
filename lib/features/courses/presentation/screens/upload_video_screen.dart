@@ -1,5 +1,4 @@
 import 'package:edtech/app/app_colors.dart';
-import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
@@ -59,13 +58,14 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
       return;
     }
 
-    await provider.uploadVideoPost(
+    if (mounted) {
+      Navigator.of(context).pop();
+      ToastService.showSuccess('Your Video is being uploaded');
+    }
+
+    provider.uploadVideoPost(
       title: _titleController.text.trim(),
     );
-
-    if (mounted && provider.step == VideoUploadStep.done) {
-      Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
-    }
   }
 
   @override

@@ -20,6 +20,7 @@ import '../../../student/presentation/widgets/skill_badges_row.dart';
 import '../../../student/presentation/widgets/social_links_row.dart';
 import '../../../student/presentation/widgets/video_list_section.dart';
 import 'package:edtech/features/profile/mentor/providers/mentor_profile_provider.dart';
+import 'package:edtech/global/core/providers/video_player_provider.dart';
 import 'package:edtech/features/profile/student/data/entities/user_profile_entity.dart';
 
 /// Mentor profile page rendered from the provider's [UserProfileEntity].
@@ -59,8 +60,19 @@ class _MentorProfileScreenState extends State<MentorProfileScreen> {
   }
 
   @override
+  void dispose() {
+    context.read<VideoPlayerProvider>().dismiss();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Consumer<MentorProfileProvider>(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        context.read<VideoPlayerProvider>().dismiss();
+      },
+      child: Consumer<MentorProfileProvider>(
       builder: (context, provider, _) {
         if (provider.profile == null) {
           if (provider.errorMessage != null) {
@@ -112,6 +124,7 @@ class _MentorProfileScreenState extends State<MentorProfileScreen> {
           isOwnProfile: widget.isOwnProfile,
         );
       },
+      ),
     );
   }
 }

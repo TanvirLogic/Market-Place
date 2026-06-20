@@ -6,6 +6,9 @@ class UploadNotificationService {
   static const String _channelId = 'upload_progress';
   static const String _channelName = 'Upload Progress';
   static const String _channelDesc = 'Shows file upload progress';
+  static const String _foregroundChannelId = 'upload_foreground';
+  static const String _foregroundChannelName = 'Upload';
+  static const String _foregroundChannelDesc = 'Required for upload service';
 
   static bool _initialized = false;
 
@@ -22,6 +25,17 @@ class UploadNotificationService {
     );
     await _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(androidChannel);
+
+    const foregroundChannel = AndroidNotificationChannel(
+      _foregroundChannelId,
+      _foregroundChannelName,
+      description: _foregroundChannelDesc,
+      importance: Importance.min,
+      playSound: false,
+      enableVibration: false,
+    );
+    await _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(foregroundChannel);
 
     _initialized = true;
   }
@@ -99,10 +113,6 @@ class UploadNotificationService {
         iOS: const DarwinNotificationDetails(),
       ),
     );
-
-    Future.delayed(const Duration(seconds: 2), () {
-      _notifications.cancel(notificationId);
-    });
   }
 
   static Future<void> showError({

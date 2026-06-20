@@ -7,6 +7,7 @@ import 'package:edtech/features/profile/shared/widgets/loading_app_bar.dart';
 import 'package:edtech/features/profile/shared/helpers/profile_helpers.dart';
 import 'package:edtech/features/profile/avatar/providers/avatar_upload_provider.dart';
 import 'package:edtech/features/profile/student/providers/student_profile_provider.dart';
+import 'package:edtech/global/core/providers/video_player_provider.dart';
 import '../widgets/completed_courses_list.dart';
 import '../widgets/profile_app_bar.dart';
 import '../widgets/profile_header_card.dart';
@@ -46,8 +47,19 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   }
 
   @override
+  void dispose() {
+    context.read<VideoPlayerProvider>().dismiss();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Consumer<StudentProfileProvider>(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        context.read<VideoPlayerProvider>().dismiss();
+      },
+      child: Consumer<StudentProfileProvider>(
       builder: (context, provider, _) {
         // ── No profile loaded yet: loading or error ──
         if (provider.profile == null) {
@@ -96,6 +108,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
         // ── Profile data available ──
         return _ProfileBody(profile: provider.profile!);
       },
+      ),
     );
   }
 }
