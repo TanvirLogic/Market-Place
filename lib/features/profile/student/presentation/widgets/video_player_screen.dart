@@ -161,6 +161,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, _) {
+        context.read<VideoPlayerProvider>().stop();
         if (didPop) _exitFullScreen();
       },
       child: Consumer<VideoPlayerProvider>(

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
+import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -61,7 +62,7 @@ class _ManageModuleAddLessonSheetState
   final _imagePicker = ImagePicker();
   XFile? _selectedFile;
   bool _isUploading = false;
-  double _uploadProgress = 0.0;
+  bool _isPicking = false;
 
   @override
   void dispose() {
@@ -70,6 +71,7 @@ class _ManageModuleAddLessonSheetState
   }
 
   Future<void> _pickFile() async {
+    setState(() => _isPicking = true);
     XFile? file;
     if (widget.lessonType == LessonType.video) {
       file = await _imagePicker.pickVideo(source: ImageSource.gallery);
@@ -84,40 +86,34 @@ class _ManageModuleAddLessonSheetState
         file = XFile(result.files.single.path!);
       }
     }
+    if (mounted) setState(() => _isPicking = false);
     if (file != null) setState(() => _selectedFile = file);
   }
 
   Future<void> _handleUpload() async {
     if (_selectedFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a file first')),
-      );
+      ToastService.showError('Please select a file first');
       return;
     }
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a title')),
-      );
+      ToastService.showError('Please enter a title');
       return;
     }
 
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-    });
-    try {
-      final success = await widget.onAddLesson(
-        title,
-        _selectedFile!,
-        (p) {
-          if (mounted) setState(() => _uploadProgress = p);
-        },
-      );
-      if (success && mounted) Navigator.of(context).pop();
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
+    setState(() => _isUploading = true);
+
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    ToastService.showSuccess('Your Video is being uploaded');
+
+    widget.onAddLesson(
+      title,
+      _selectedFile!,
+      (p) {},
+    );
   }
 
   @override
@@ -161,7 +157,8 @@ class _ManageModuleAddLessonSheetState
           UploadZone(
             cs: cs,
             isDark: isDark,
-            onTap: _isUploading ? null : _pickFile,
+            isPicking: _isPicking,
+            onTap: _isUploading || _isPicking ? null : _pickFile,
             selectedFileName: _selectedFile?.name,
             label: isVideo ? 'Upload Video File' : 'Upload Resource',
             iconData: isVideo
@@ -228,22 +225,6 @@ class _ManageModuleAddLessonSheetState
             ),
           ),
           const SizedBox(height: 20),
-          if (_isUploading)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Column(
-                children: [
-                  Text(
-                    '${(_uploadProgress * 100).toInt()}%',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           SizedBox(
             height: 48,
             child: ElevatedButton(
@@ -256,11 +237,12 @@ class _ManageModuleAddLessonSheetState
                 ),
               ),
               child: _isUploading
-                  ? Text(
-                      isVideo ? 'Uploading Video...' : 'Uploading...',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
                       ),
                     )
                   : Text(

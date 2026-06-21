@@ -37,7 +37,7 @@ class CourseUploadProvider extends ChangeNotifier {
   final ImagePicker _imagePicker;
 
   CourseUploadProvider({ImagePicker? imagePicker})
-      : _imagePicker = imagePicker ?? ImagePicker();
+    : _imagePicker = imagePicker ?? ImagePicker();
 
   UploadStep _step = UploadStep.idle;
   UploadStep get step => _step;
@@ -225,11 +225,7 @@ class CourseUploadProvider extends ChangeNotifier {
       final uploadUrl = info?['uploadUrl'] as String?;
       final fileUrl = info?['fileUrl'] as String?;
       if (uploadUrl != null && fileUrl != null) {
-        await _uploadToS3(
-          uploadUrl,
-          video,
-          _inferVideoContentType(video.name),
-        );
+        await _uploadToS3(uploadUrl, video, _inferVideoContentType(video.name));
         result['introVideoUrl'] = fileUrl;
       }
     }
@@ -264,6 +260,7 @@ class CourseUploadProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await Future.delayed(const Duration(seconds: 2));
       await UploadNotificationService.requestNotificationPermission();
       await UploadNotificationService.startService();
       _step = UploadStep.uploadingUrls;
@@ -291,7 +288,9 @@ class CourseUploadProvider extends ChangeNotifier {
       if (!urlsResponse.isSuccess) {
         _step = UploadStep.error;
         _errorMessage = urlsResponse.errorMessage;
-        AppLogger.e('CourseUpload: upload-urls failed — code=${urlsResponse.responseCode}, error=$_errorMessage, body=${urlsResponse.responseData}');
+        AppLogger.e(
+          'CourseUpload: upload-urls failed — code=${urlsResponse.responseCode}, error=$_errorMessage, body=${urlsResponse.responseData}',
+        );
         ToastService.showError('Failed to get upload URL');
         await UploadNotificationService.showError(
           notificationId: _currentNotifId!,
@@ -302,7 +301,9 @@ class CourseUploadProvider extends ChangeNotifier {
         return false;
       }
 
-      AppLogger.i('CourseUpload: upload-urls response — ${urlsResponse.responseData}');
+      AppLogger.i(
+        'CourseUpload: upload-urls response — ${urlsResponse.responseData}',
+      );
 
       final raw = urlsResponse.responseData;
       final wrapper = raw is Map ? raw['data'] : null;
@@ -393,7 +394,9 @@ class CourseUploadProvider extends ChangeNotifier {
       if (courseResponse.isSuccess) {
         final rawData = courseResponse.responseData['data'];
         final data = (rawData is Map) ? (rawData['data'] ?? rawData) : rawData;
-        _createdCourseId = (data is Map<String, dynamic>) ? data['id']?.toString() : null;
+        _createdCourseId = (data is Map<String, dynamic>)
+            ? data['id']?.toString()
+            : null;
         _step = UploadStep.done;
         ToastService.showSuccess('Course created successfully');
         await UploadNotificationService.showSuccess(
@@ -406,7 +409,9 @@ class CourseUploadProvider extends ChangeNotifier {
       } else {
         _step = UploadStep.error;
         _errorMessage = courseResponse.errorMessage;
-        ToastService.showError(courseResponse.errorMessage ?? 'Failed to create course');
+        ToastService.showError(
+          courseResponse.errorMessage ?? 'Failed to create course',
+        );
         await UploadNotificationService.showError(
           notificationId: _currentNotifId!,
           title: 'Upload Failed',
@@ -428,9 +433,9 @@ class CourseUploadProvider extends ChangeNotifier {
       AppLogger.e('CourseUpload: unexpected error — $_errorMessage');
       ToastService.showError('Something went wrong. Please try again.');
       await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
+        notificationId: _currentNotifId!,
+        title: 'Upload Failed',
+      );
       await UploadNotificationService.stopService();
       notifyListeners();
       return false;
@@ -457,7 +462,8 @@ class CourseUploadProvider extends ChangeNotifier {
             lastPct = pct;
             _uploadProgress = sent / total;
             final now = DateTime.now();
-            if (now.difference(lastUiUpdate) >= const Duration(milliseconds: 200)) {
+            if (now.difference(lastUiUpdate) >=
+                const Duration(milliseconds: 200)) {
               lastUiUpdate = now;
               notifyListeners();
             }
@@ -486,7 +492,9 @@ class CourseUploadProvider extends ChangeNotifier {
     _activeClient = client;
 
     try {
-      final response = await client.send(request).timeout(const Duration(hours: 6));
+      final response = await client
+          .send(request)
+          .timeout(const Duration(hours: 6));
       _uploadProgress = 1.0;
       notifyListeners();
       if (response.statusCode != 200) {

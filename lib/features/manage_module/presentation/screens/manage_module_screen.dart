@@ -14,6 +14,7 @@ import 'package:edtech/features/manage_module/presentation/widgets/manage_module
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_module_sheet.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_lesson_sheet.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
+import 'package:edtech/global/core/providers/video_player_provider.dart';
 import 'package:edtech/features/profile/student/presentation/widgets/video_player_screen.dart';
 
 class ManageModuleScreen extends StatelessWidget {
@@ -45,6 +46,12 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
     return _revealNotifiers.putIfAbsent(moduleId, () => ValueNotifier(false));
   }
 
+  @override
+  void dispose() {
+    context.read<VideoPlayerProvider>().dismiss();
+    super.dispose();
+  }
+
   void _showRenameDialog(String currentName, ValueChanged<String> onSaved) {
     AppAlertDialog.showInput(
       context: context,
@@ -68,7 +75,12 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
 
     return Consumer<ManageModuleProvider>(
       builder: (context, provider, _) {
-        return Scaffold(
+        return PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (didPop, _) {
+            context.read<VideoPlayerProvider>().dismiss();
+          },
+          child: Scaffold(
           body: Stack(
             children: [
               Positioned.fill(
@@ -246,6 +258,7 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
               ),
             ],
           ),
+        ),
         );
       },
     );
