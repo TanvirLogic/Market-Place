@@ -17,7 +17,10 @@ class RoleSelectionScreen extends StatefulWidget {
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
+  String? _loadingRole;
+
   Future<void> _selectRole(String role) async {
+    setState(() => _loadingRole = role);
     final provider = context.read<SignInProvider>();
     final success = await provider.completeGoogleSignIn(widget.idToken, role);
     if (!mounted) return;
@@ -28,6 +31,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         AppRoutes.home,
         (route) => false,
       );
+    } else {
+      setState(() => _loadingRole = null);
     }
   }
 
@@ -73,19 +78,21 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                             ),
                           ),
                           const SizedBox(height: 28),
-                          _RoleOptionCard(
-                            icon: Icons.school_outlined,
-                            title: "Student",
-                            subtitle: "Join courses and learn",
-                            onTap: () => _selectRole('STUDENT'),
-                          ),
-                          const SizedBox(height: 12),
-                          _RoleOptionCard(
-                            icon: Icons.auto_awesome,
-                            title: "Mentor",
-                            subtitle: "Create courses and teach",
-                            onTap: () => _selectRole('MENTOR'),
-                          ),
+                            _RoleOptionCard(
+                              icon: Icons.school_outlined,
+                              title: "Student",
+                              subtitle: "Join courses and learn",
+                              isLoading: _loadingRole == 'STUDENT',
+                              onTap: () => _selectRole('STUDENT'),
+                            ),
+                            const SizedBox(height: 12),
+                            _RoleOptionCard(
+                              icon: Icons.auto_awesome,
+                              title: "Mentor",
+                              subtitle: "Create courses and teach",
+                              isLoading: _loadingRole == 'MENTOR',
+                              onTap: () => _selectRole('MENTOR'),
+                            ),
                         ],
                       ),
                     ),
@@ -104,90 +111,87 @@ class _RoleOptionCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final bool isLoading;
   final VoidCallback onTap;
 
   const _RoleOptionCard({
     required this.icon,
     required this.title,
     required this.subtitle,
+    required this.isLoading,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Consumer<SignInProvider>(
-      builder: (context, provider, _) {
-        final isLoading = provider.isGoogleLoading || provider.inProgress;
-        return GestureDetector(
-          onTap: isLoading ? null : onTap,
-          child: AnimatedOpacity(
-            opacity: isLoading ? 0.6 : 1.0,
-            duration: const Duration(milliseconds: 200),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                border: Border.all(
-                  color: AppColors.themeColor.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.themeColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                    ),
-                    child: isLoading
-                        ? const Center(
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : Icon(icon, color: AppColors.themeColor, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: cs.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isLoading)
-                    Icon(
-                      Icons.chevron_right,
-                      color: AppColors.themeColor,
-                      size: 20,
-                    ),
-                ],
-              ),
+    return GestureDetector(
+      onTap: isLoading ? null : onTap,
+      child: AnimatedOpacity(
+        opacity: isLoading ? 0.6 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+            border: Border.all(
+              color: AppColors.themeColor.withValues(alpha: 0.3),
             ),
           ),
-        );
-      },
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.themeColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+                child: isLoading
+                    ? const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Icon(icon, color: AppColors.themeColor, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!isLoading)
+                Icon(
+                  Icons.chevron_right,
+                  color: AppColors.themeColor,
+                  size: 20,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
