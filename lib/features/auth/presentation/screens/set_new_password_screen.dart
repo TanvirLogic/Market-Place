@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:flutter/material.dart';
@@ -21,9 +23,19 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  Timer? _errorTimer;
+
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _formKey.currentState?.reset();
+    });
+  }
 
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -31,6 +43,7 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
 
   void _handleSubmit() async {
     if (_formKey.currentState!.validate()) {
+      _errorTimer?.cancel();
       final passwordResetProvider = context.read<PasswordResetProvider>();
       final email = passwordResetProvider.resetEmail ?? '';
       final code = passwordResetProvider.resetCode ?? '';
@@ -50,6 +63,8 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
           'buttonText': 'Back to Login',
         });
       }
+    } else {
+      _scheduleErrorClear();
     }
   }
 

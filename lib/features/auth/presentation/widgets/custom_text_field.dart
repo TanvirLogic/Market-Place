@@ -5,10 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Themed text field with autovalidate-on-interaction.
-///
-/// When [isRequired] is true, the validator returns null for empty fields
-/// (no inline "required" message). Required checks are handled by submit
-/// handlers via ToastService to keep the UI clean.
 class CustomTextField extends StatelessWidget {
   final String label;
   final String hint;
@@ -76,7 +72,7 @@ class CustomTextField extends StatelessWidget {
           keyboardType: keyboardType,
           inputFormatters: inputFormatters,
           validator: (value) {
-            if (value == null || value.isEmpty) return null;
+            if (!isRequired && (value == null || value.isEmpty)) return null;
             return validator?.call(value);
           },
           readOnly: readOnly,

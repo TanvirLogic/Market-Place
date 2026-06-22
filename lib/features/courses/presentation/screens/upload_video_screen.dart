@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
@@ -19,8 +21,18 @@ class UploadVideoScreen extends StatefulWidget {
 
 class _UploadVideoScreenState extends State<UploadVideoScreen> {
   final TextEditingController _titleController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  Timer? _errorTimer;
   int _characterCount = 0;
   bool _didReset = false;
+
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _formKey.currentState?.reset();
+    });
+  }
 
   @override
   void initState() {
@@ -44,13 +56,14 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
 
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _titleController.dispose();
     super.dispose();
   }
 
   Future<void> _handleUpload(VideoPostProvider provider) async {
-    if (_titleController.text.trim().isEmpty) {
-      ToastService.showError('Title is required');
+    if (!_formKey.currentState!.validate()) {
+      _scheduleErrorClear();
       return;
     }
     if (provider.videoFile == null) {
@@ -89,12 +102,14 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: AppSizes.horizontalPadding, vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Consumer<VideoPostProvider>(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSizes.horizontalPadding, vertical: 16),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Consumer<VideoPostProvider>(
                       builder: (context, provider, _) {
                         return UploadZone(
                           cs: cs,
@@ -125,6 +140,10 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                       maxLength: 60,
                       buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                       style: TextStyle(color: cs.onSurface),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) return 'Title is required';
+                        return null;
+                      },
                       decoration: InputDecoration(
                         hintText: 'Enter your video title',
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -154,6 +173,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                   ],
                 ),
               ),
+            ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),

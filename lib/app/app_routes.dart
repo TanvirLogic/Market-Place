@@ -6,6 +6,7 @@ import 'package:edtech/features/auth/presentation/screens/forgot_password_screen
 import 'package:edtech/features/auth/presentation/screens/reset_verification_screen.dart';
 import 'package:edtech/features/auth/presentation/screens/set_new_password_screen.dart';
 import 'package:edtech/features/auth/presentation/screens/password_success_screen.dart';
+import 'package:edtech/features/auth/presentation/screens/role_selection_screen.dart';
 import 'package:edtech/features/home/presentation/pages/main_nav_shell.dart';
 import 'package:edtech/features/course_details/presentation/screens/course_details_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/payment_success_screen.dart';
@@ -51,6 +52,7 @@ class AppRoutes {
   static const String manageModule = '/manage-module';
   static const String adsManager = '/ads-manager';
   static const String adsCreate = '/ads-create';
+  static const String roleSelection = '/role-selection';
 
   static Future<void> navigateToProfile(BuildContext context, String role) {
     final route = role == 'MENTOR' ? mentorProfilePage : profilePage;
@@ -126,6 +128,12 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const AdsManagerScreen());
       case adsCreate:
         return MaterialPageRoute(builder: (_) => const AdsCreateScreen());
+      case roleSelection:
+        final args = settings.arguments as Map<String, dynamic>?;
+        final idToken = args?['idToken'] as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => RoleSelectionScreen(idToken: idToken),
+        );
       case fullScreenImage:
         final args = settings.arguments as Map<String, dynamic>;
         final imageUrl = args['imageUrl'] as String;

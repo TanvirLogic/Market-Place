@@ -49,7 +49,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: AppSizes.horizontalPadding),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSizes.horizontalPadding,
+            ),
             child: Form(
               key: _formKey,
               child: Column(
@@ -70,7 +72,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ageController: _ageController,
                     selectedGender: _selectedGender,
                     selectedRole: _selectedRole,
-                    onGenderChanged: (val) => setState(() => _selectedGender = val),
+                    onGenderChanged: (val) =>
+                        setState(() => _selectedGender = val),
                     onRoleChanged: (val) => setState(() => _selectedRole = val),
                   ),
                   const SizedBox(height: 40),
@@ -94,9 +97,24 @@ class _HeaderSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Create your account", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+        Text(
+          "Create your account",
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
         const SizedBox(height: 8),
-        Text("Join our community and get started", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 14)),
+        Text(
+          "Join our community and get started",
+          style: TextStyle(
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.6),
+            fontSize: 14,
+          ),
+        ),
       ],
     );
   }
@@ -170,13 +188,17 @@ class _RegistrationFormState extends State<_RegistrationForm> {
 
   Widget _buildNameField() {
     return CustomTextField(
-      label: "Full name", hint: "Enter your name", isRequired: true,
+      label: "Full name",
+      hint: "Enter your name",
+      isRequired: true,
       controller: widget.nameController,
       prefixIcon: const Icon(Icons.person_outline, size: 20),
       inputFormatters: [LengthLimitingTextInputFormatter(20)],
       validator: (value) {
-        if (value == null || value.isEmpty) return 'Please enter your full name';
-        if (value.trim().split(' ').length < 2) return 'Please enter at least two names';
+        if (value == null || value.isEmpty)
+          return 'Please enter your full name';
+        if (value.trim().split(' ').length < 2)
+          return 'Please enter at least two names';
         return null;
       },
       onChanged: _formatName,
@@ -193,21 +215,27 @@ class _RegistrationFormState extends State<_RegistrationForm> {
       }).toList();
       final formattedName = capitalizedWords.join(' ');
       if (widget.nameController.text != formattedName) {
-        widget.nameController.value = TextEditingValue(text: formattedName, selection: widget.nameController.selection);
+        widget.nameController.value = TextEditingValue(
+          text: formattedName,
+          selection: widget.nameController.selection,
+        );
       }
     }
   }
 
   Widget _buildUsernameField() {
     return CustomTextField(
-      label: "Username", hint: "Enter your Username", isRequired: true,
+      label: "Username",
+      hint: "Enter your Username",
+      isRequired: true,
       controller: widget.usernameController,
       prefixIcon: const Icon(Icons.alternate_email, size: 20),
       inputFormatters: [LengthLimitingTextInputFormatter(20)],
       validator: (value) {
         if (value == null || value.isEmpty) return 'Username is required';
         if (value.length < 3) return 'Username must be at least 3 characters';
-        if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) return 'Only letters, numbers, and underscores allowed';
+        if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value))
+          return 'Only letters, numbers, and underscores allowed';
         return null;
       },
     );
@@ -215,20 +243,27 @@ class _RegistrationFormState extends State<_RegistrationForm> {
 
   Widget _buildPhoneField() {
     return CustomTextField(
-      label: "Phone Number", hint: "01XXXXXXXXX", isRequired: false,
-      controller: widget.phoneController, keyboardType: TextInputType.phone,
+      label: "Phone Number",
+      hint: "01XXXXXXXXX",
+      isRequired: false,
+      controller: widget.phoneController,
+      keyboardType: TextInputType.phone,
       inputFormatters: [LengthLimitingTextInputFormatter(20)],
       prefixIcon: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Text("+88", style: TextStyle(fontSize: 14)),
-          const SizedBox(width: 8),
-          const SizedBox(height: 24, child: VerticalDivider(thickness: 1)),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("+88", style: TextStyle(fontSize: 14)),
+            const SizedBox(width: 8),
+            const SizedBox(height: 24, child: VerticalDivider(thickness: 1)),
+          ],
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) return 'Phone number is required';
-        if (!RegExp(r'^01[3-9]\d{8}$').hasMatch(value.trim())) return 'Enter a valid 11-digit Bangladeshi number';
+        if (!RegExp(r'^01[3-9]\d{8}$').hasMatch(value.trim()))
+          return 'Enter a valid 11-digit Bangladeshi number';
         return null;
       },
     );
@@ -236,13 +271,17 @@ class _RegistrationFormState extends State<_RegistrationForm> {
 
   Widget _buildEmailField() {
     return CustomTextField(
-      label: "Email", hint: "Enter your Email", isRequired: true,
-      controller: widget.emailController, keyboardType: TextInputType.emailAddress,
+      label: "Email",
+      hint: "Enter your Email",
+      isRequired: true,
+      controller: widget.emailController,
+      keyboardType: TextInputType.emailAddress,
       prefixIcon: const Icon(Icons.email_outlined, size: 20),
       focusNode: _emailFocusNode,
       validator: (value) {
         if (value == null || value.isEmpty) return 'Email address is required';
-        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) return 'Enter a valid email';
+        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value))
+          return 'Enter a valid email';
         if (_emailError != null) return _emailError;
         return null;
       },
@@ -255,30 +294,53 @@ class _RegistrationFormState extends State<_RegistrationForm> {
       child: TextButton(
         onPressed: () async {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('registered_email', widget.emailController.text.trim());
+          await prefs.setString(
+            'registered_email',
+            widget.emailController.text.trim(),
+          );
           if (!context.mounted) return;
-          Navigator.pushNamed(context, AppRoutes.login, arguments: {'email': widget.emailController.text.trim()});
+          Navigator.pushNamed(
+            context,
+            AppRoutes.login,
+            arguments: {'email': widget.emailController.text.trim()},
+          );
         },
-        child: Text("Already have an account? Log in", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13, fontWeight: FontWeight.w500)),
+        child: Text(
+          "Already have an account? Log in",
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.primary,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildPasswordField(SignUpProvider provider) {
     return CustomTextField(
-      label: "Password", hint: "Enter your Password", isRequired: true,
+      label: "Password",
+      hint: "Enter your Password",
+      isRequired: true,
       isObscure: provider.isPasswordObscure,
       controller: widget.passwordController,
       prefixIcon: const Icon(Icons.lock_outline, size: 20),
       inputFormatters: [LengthLimitingTextInputFormatter(20)],
       suffixIcon: IconButton(
         onPressed: () => provider.togglePasswordVisibility(),
-        icon: Icon(provider.isPasswordObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+        icon: Icon(
+          provider.isPasswordObscure
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_outlined,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) return 'Password is required';
         if (value.length < 8) return 'Password should be at least 8 characters';
-        if (!value.contains(RegExp(r'[A-Z]'))) return 'Add at least one uppercase letter';
+        if (!value.contains(RegExp(r'[A-Z]')))
+          return 'Add at least one uppercase letter';
         if (!value.contains(RegExp(r'[0-9]'))) return 'Add at least one number';
         return null;
       },
@@ -293,22 +355,79 @@ class _RegistrationFormState extends State<_RegistrationForm> {
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: widget.selectedGender,
-          style: TextStyle(color: cs.onSurface, fontSize: 15, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: cs.onSurface,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
           decoration: InputDecoration(
+            fillColor: AppColors.fill,
             hintText: "Select your gender",
-            hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.5), fontSize: 14),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            hintStyle: TextStyle(
+              color: cs.onSurface.withValues(alpha: 0.5),
+              fontSize: 14,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             filled: true,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppSizes.radiusDef), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppSizes.radiusDef), borderSide: const BorderSide(color: AppColors.border, width: 1)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppSizes.radiusDef), borderSide: BorderSide(color: AppColors.themeColor, width: 1.5)),
-            errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppSizes.radiusDef), borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5)),
-            focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppSizes.radiusDef), borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+              borderSide: const BorderSide(color: AppColors.border, width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+              borderSide: BorderSide(color: AppColors.themeColor, width: 1.5),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+              borderSide: const BorderSide(
+                color: Color(0xFFEF4444),
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+              borderSide: const BorderSide(
+                color: Color(0xFFEF4444),
+                width: 1.5,
+              ),
+            ),
             errorStyle: const TextStyle(fontSize: 12, color: Colors.redAccent),
           ),
+          validator: (value) {
+            if (value == null || value.isEmpty)
+              return 'Please select your gender';
+            return null;
+          },
           dropdownColor: Colors.white,
-          icon: Icon(Icons.keyboard_arrow_down_rounded, color: cs.onSurface.withValues(alpha: 0.5)),
-          items: ['Male', 'Female'].map((e) => DropdownMenuItem(value: e, child: Row(children: [Icon(e == 'Male' ? Icons.male : Icons.female, size: 18, color: cs.onSurface.withValues(alpha: 0.5)), const SizedBox(width: 12), Text(e)]))).toList(),
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: cs.onSurface.withValues(alpha: 0.5),
+          ),
+          items: ['Male', 'Female']
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Row(
+                    children: [
+                      Icon(
+                        e == 'Male' ? Icons.male : Icons.female,
+                        size: 18,
+                        color: cs.onSurface.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(e),
+                    ],
+                  ),
+                ),
+              )
+              .toList(),
           onChanged: widget.onGenderChanged,
         ),
       ],
@@ -317,8 +436,11 @@ class _RegistrationFormState extends State<_RegistrationForm> {
 
   Widget _buildAgeField(ColorScheme cs) {
     return CustomTextField(
-      label: "Age", hint: "Select your Date of Birth", isRequired: true,
-      controller: widget.ageController, readOnly: true,
+      label: "Date of Birth",
+      hint: "Select your Date of Birth",
+      isRequired: true,
+      controller: widget.ageController,
+      readOnly: true,
       prefixIcon: const Icon(Icons.calendar_today_outlined, size: 20),
       onTap: () => _showDatePicker(cs),
       validator: (value) {
@@ -330,33 +452,76 @@ class _RegistrationFormState extends State<_RegistrationForm> {
 
   void _showDatePicker(ColorScheme cs) {
     showModalBottomSheet(
-      context: context, backgroundColor: cs.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppSizes.radiusLg2))),
+      context: context,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppSizes.radiusLg2),
+        ),
+      ),
       builder: (BuildContext context) {
         return Container(
-          height: 450, padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(AppSizes.radiusLg2))),
-          child: Column(children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 20),
-            Text("Select Date of Birth", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: cs.onSurface)),
-            const SizedBox(height: 10),
-            Expanded(
-              child: Theme(
-                data: Theme.of(context).copyWith(
-                  colorScheme: ColorScheme(brightness: cs.brightness, primary: AppColors.themeColor, onPrimary: cs.onPrimary, secondary: cs.secondary, onSecondary: cs.onSecondary, error: cs.error, onError: cs.onError, surface: cs.surface, onSurface: cs.onSurface),
-                ),
-                child: CalendarDatePicker(
-                  initialDate: widget.ageController.text.isNotEmpty ? DateTime.parse(widget.ageController.text) : DateTime.now().subtract(const Duration(days: 365 * 18)),
-                  firstDate: DateTime(1900), lastDate: DateTime.now(),
-                  onDateChanged: (DateTime picked) {
-                    widget.ageController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
-                    Navigator.pop(context);
-                  },
+          height: 450,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppSizes.radiusLg2),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.onSurface.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-          ]),
+              const SizedBox(height: 20),
+              Text(
+                "Select Date of Birth",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    colorScheme: ColorScheme(
+                      brightness: cs.brightness,
+                      primary: AppColors.themeColor,
+                      onPrimary: cs.onPrimary,
+                      secondary: cs.secondary,
+                      onSecondary: cs.onSecondary,
+                      error: cs.error,
+                      onError: cs.onError,
+                      surface: cs.surface,
+                      onSurface: cs.onSurface,
+                    ),
+                  ),
+                  child: CalendarDatePicker(
+                    initialDate: widget.ageController.text.isNotEmpty
+                        ? DateTime.parse(widget.ageController.text)
+                        : DateTime.now().subtract(
+                            const Duration(days: 365 * 18),
+                          ),
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime.now(),
+                    onDateChanged: (DateTime picked) {
+                      widget.ageController.text =
+                          "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                      Navigator.pop(context);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -366,13 +531,27 @@ class _RegistrationFormState extends State<_RegistrationForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _InputLabel(label: "Role Select", isRequired: true),
+        const _InputLabel(label: "Role", isRequired: true),
         const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _RoleCard(label: "Student", isSelected: widget.selectedRole == 'Student', onTap: () => widget.onRoleChanged('Student'))),
-          const SizedBox(width: 16),
-          Expanded(child: _RoleCard(label: "Mentor", isSelected: widget.selectedRole == 'Mentor', onTap: () => widget.onRoleChanged('Mentor'))),
-        ]),
+        Row(
+          children: [
+            Expanded(
+              child: _RoleCard(
+                label: "Student",
+                isSelected: widget.selectedRole == 'Student',
+                onTap: () => widget.onRoleChanged('Student'),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _RoleCard(
+                label: "Mentor",
+                isSelected: widget.selectedRole == 'Mentor',
+                onTap: () => widget.onRoleChanged('Mentor'),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -384,12 +563,30 @@ class _RegistrationFormState extends State<_RegistrationForm> {
       onPressed: () async {
         setState(() => _emailError = null);
 
-        if (widget.nameController.text.trim().isEmpty) { ToastService.showError('Full name is required'); return; }
-        if (widget.usernameController.text.trim().isEmpty) { ToastService.showError('Username is required'); return; }
-        if (widget.emailController.text.trim().isEmpty) { ToastService.showError('Email is required'); return; }
-        if (widget.passwordController.text.isEmpty) { ToastService.showError('Password is required'); return; }
-        if (widget.ageController.text.isEmpty) { ToastService.showError('Date of Birth is required'); return; }
-        if (widget.selectedGender == null) { ToastService.showError('Please select your gender'); return; }
+        // if (widget.nameController.text.trim().isEmpty) {
+        //   ToastService.showError('Full name is required');
+        //   return;
+        // }
+        // if (widget.usernameController.text.trim().isEmpty) {
+        //   ToastService.showError('Username is required');
+        //   return;
+        // }
+        // if (widget.emailController.text.trim().isEmpty) {
+        //   ToastService.showError('Email is required');
+        //   return;
+        // }
+        // if (widget.passwordController.text.isEmpty) {
+        //   ToastService.showError('Password is required');
+        //   return;
+        // }
+        // if (widget.ageController.text.isEmpty) {
+        //   ToastService.showError('Date of Birth is required');
+        //   return;
+        // }
+        // if (widget.selectedGender == null) {
+        //   ToastService.showError('Please select your gender');
+        //   return;
+        // }
 
         if (widget.formKey.currentState!.validate()) {
           final genderInt = (widget.selectedGender == 'Male') ? 1 : 0;
@@ -401,22 +598,37 @@ class _RegistrationFormState extends State<_RegistrationForm> {
             email: widget.emailController.text.trim(),
             dob: widget.ageController.text,
             password: widget.passwordController.text,
-            phone: widget.phoneController.text.trim().isEmpty ? null : widget.phoneController.text.trim(),
+            phone: widget.phoneController.text.trim().isEmpty
+                ? null
+                : widget.phoneController.text.trim(),
             gender: genderInt,
             role: roleEnum,
           );
 
           if (context.mounted) {
             if (success) {
-              Navigator.pushNamed(context, AppRoutes.verification, arguments: {'type': 'registration', 'email': widget.emailController.text.trim()});
+              Navigator.pushNamed(
+                context,
+                AppRoutes.verification,
+                arguments: {
+                  'type': 'registration',
+                  'email': widget.emailController.text.trim(),
+                },
+              );
             } else {
               final errorMsg = provider.errorMessage?.toLowerCase() ?? '';
-              if (errorMsg.contains('email') && (errorMsg.contains('exists') || errorMsg.contains('registered') || errorMsg.contains('already'))) {
-                setState(() => _emailError = 'This email is already registered');
+              if (errorMsg.contains('email') &&
+                  (errorMsg.contains('exists') ||
+                      errorMsg.contains('registered') ||
+                      errorMsg.contains('already'))) {
+                setState(
+                  () => _emailError = 'This email is already registered',
+                );
                 FocusScope.of(context).requestFocus(_emailFocusNode);
                 widget.formKey.currentState!.validate();
               } else {
-                if (provider.errorMessage != null) ToastService.showError(provider.errorMessage!);
+                if (provider.errorMessage != null)
+                  ToastService.showError(provider.errorMessage!);
               }
             }
           }
@@ -431,7 +643,11 @@ class _RoleCard extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _RoleCard({required this.label, required this.isSelected, required this.onTap});
+  const _RoleCard({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -442,14 +658,33 @@ class _RoleCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: BoxDecoration(
-          color: scBg, borderRadius: BorderRadius.circular(AppSizes.radiusDef),
-          border: Border.all(color: isSelected ? AppColors.themeColor : AppColors.border, width: 2),
+          color: scBg,
+          borderRadius: BorderRadius.circular(AppSizes.radiusDef),
+          border: Border.all(
+            color: isSelected ? AppColors.themeColor : AppColors.border,
+            width: 2,
+          ),
         ),
-        child: Row(children: [
-          Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off, color: isSelected ? AppColors.themeColor : cs.onSurface.withValues(alpha: 0.5)),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: isSelected ? cs.onSurface : cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w500)),
-        ]),
+        child: Row(
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected
+                  ? AppColors.themeColor
+                  : cs.onSurface.withValues(alpha: 0.5),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected
+                    ? cs.onSurface
+                    : cs.onSurface.withValues(alpha: 0.5),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -465,8 +700,19 @@ class _InputLabel extends StatelessWidget {
     return RichText(
       text: TextSpan(
         text: label,
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 14),
-        children: isRequired ? [const TextSpan(text: ' *', style: TextStyle(color: Colors.red))] : [],
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+        children: isRequired
+            ? [
+                const TextSpan(
+                  text: ' *',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ]
+            : [],
       ),
     );
   }
@@ -477,12 +723,29 @@ class _FooterSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Text("Already have an account? ", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
-      GestureDetector(
-        onTap: () => Navigator.pop(context),
-        child: Text("Log in", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
-      ),
-    ]);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          "Already have an account? ",
+          style: TextStyle(
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Text(
+            "Log in",
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.bold,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

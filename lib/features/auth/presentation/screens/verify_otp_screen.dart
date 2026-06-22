@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:edtech/app/app_routes.dart';
-import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/verify_otp_provider.dart';
@@ -20,7 +21,17 @@ class VerifyOtpScreen extends StatefulWidget {
 class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
   final List<TextEditingController> _controllers = List.generate(6, (index) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
+  String? _otpError;
+  Timer? _errorTimer;
   String get _email => widget.email;
+
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() => _otpError = null);
+    });
+  }
 
   @override
   void initState() {
@@ -32,6 +43,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
 
   @override
   void dispose() {
+    _errorTimer?.cancel();
     for (var controller in _controllers) { controller.dispose(); }
     for (var node in _focusNodes) { node.dispose(); }
     super.dispose();
@@ -41,7 +53,8 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
 
   Future<void> _handleVerification(VerifyOtpProvider provider) async {
     if (_otpCode.length != 6) {
-      ToastService.showError("Please enter the 6-digit code");
+      setState(() => _otpError = "Please enter the 6-digit code");
+      _scheduleErrorClear();
       return;
     }
 
@@ -74,7 +87,13 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                 _HeaderSection(email: _email),
                 const SizedBox(height: 40),
                 OtpInputRow(controllers: _controllers, focusNodes: _focusNodes),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
+                if (_otpError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Text(_otpError!, style: const TextStyle(fontSize: 12, color: Colors.redAccent)),
+                  ),
+                const SizedBox(height: 16),
                 _ResendTimer(email: _email),
                 const SizedBox(height: 40),
                 AuthButton(

@@ -60,12 +60,23 @@ class _ManageModuleAddLessonSheetState
     extends State<ManageModuleAddLessonSheet> {
   final _titleController = TextEditingController();
   final _imagePicker = ImagePicker();
+  final _formKey = GlobalKey<FormState>();
+  Timer? _errorTimer;
   XFile? _selectedFile;
   bool _isUploading = false;
   bool _isPicking = false;
 
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _formKey.currentState?.reset();
+    });
+  }
+
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _titleController.dispose();
     super.dispose();
   }
@@ -95,11 +106,11 @@ class _ManageModuleAddLessonSheetState
       ToastService.showError('Please select a file first');
       return;
     }
-    final title = _titleController.text.trim();
-    if (title.isEmpty) {
-      ToastService.showError('Please enter a title');
+    if (!_formKey.currentState!.validate()) {
+      _scheduleErrorClear();
       return;
     }
+    final title = _titleController.text.trim();
 
     setState(() => _isUploading = true);
 
@@ -191,7 +202,9 @@ class _ManageModuleAddLessonSheetState
             ],
           ),
           const SizedBox(height: 8),
-          TextFormField(
+          Form(
+            key: _formKey,
+            child: TextFormField(
             controller: _titleController,
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
@@ -201,6 +214,10 @@ class _ManageModuleAddLessonSheetState
                 (_, {required currentLength, required isFocused, maxLength}) =>
                     null,
             style: TextStyle(color: cs.onSurface),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return 'Please enter a title';
+              return null;
+            },
             decoration: InputDecoration(
               hintText: isVideo
                   ? 'Enter your video title'
@@ -223,6 +240,7 @@ class _ManageModuleAddLessonSheetState
                 borderSide: BorderSide(color: cs.primary, width: 1.5),
               ),
             ),
+          ),
           ),
           const SizedBox(height: 20),
           SizedBox(

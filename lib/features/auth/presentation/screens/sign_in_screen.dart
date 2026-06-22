@@ -1,4 +1,5 @@
-import 'package:edtech/app/app_colors.dart';
+import 'dart:async';
+
 import 'package:edtech/app/app_routes.dart';
 import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:flutter/material.dart';
@@ -22,11 +23,20 @@ class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  Timer? _errorTimer;
 
   @override
   void initState() {
     super.initState();
     _checkAutoFillEmail();
+  }
+
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _formKey.currentState?.reset();
+    });
   }
 
   void _checkAutoFillEmail() async {
@@ -38,7 +48,8 @@ class _SignInScreenState extends State<SignInScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       if (args != null && args.containsKey('email')) {
         _emailController.text = args['email'];
       }
@@ -47,6 +58,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -54,6 +66,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
+      _errorTimer?.cancel();
       final provider = context.read<SignInProvider>();
       final success = await provider.signIn(
         _emailController.text.trim(),
@@ -74,6 +87,8 @@ class _SignInScreenState extends State<SignInScreen> {
           );
         }
       }
+    } else {
+      _scheduleErrorClear();
     }
   }
 
@@ -84,32 +99,34 @@ class _SignInScreenState extends State<SignInScreen> {
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: AppSizes.horizontalPadding),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const _AppLogo(),
-                    const SizedBox(height: 32),
-                    const _WelcomeText(),
-                    const SizedBox(height: 40),
-                    _LoginForm(
-                      emailController: _emailController,
-                      passwordController: _passwordController,
-                      onLoginPressed: _handleLogin,
-                    ),
-                    const SizedBox(height: 24),
-                    const _SocialDivider(),
-                    const SizedBox(height: 24),
-                    const _GoogleButton(),
-                    const SizedBox(height: 40),
-                    const _Footer(),
-                    const SizedBox(height: 20),
-                  ],
-                ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSizes.horizontalPadding,
+            ),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const _AppLogo(),
+                  const SizedBox(height: 32),
+                  const _WelcomeText(),
+                  const SizedBox(height: 40),
+                  _LoginForm(
+                    emailController: _emailController,
+                    passwordController: _passwordController,
+                    onLoginPressed: _handleLogin,
+                  ),
+                  const SizedBox(height: 24),
+                  const _SocialDivider(),
+                  const SizedBox(height: 24),
+                  const _GoogleButton(),
+                  const SizedBox(height: 40),
+                  const _Footer(),
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
+          ),
         ),
       ),
     );
@@ -125,7 +142,11 @@ class _AppLogo extends StatelessWidget {
       child: Container(
         height: 80,
         width: 80,
-        child: Image.asset(Images.eduverseLogo, fit: BoxFit.contain, filterQuality: FilterQuality.high),
+        child: Image.asset(
+          Images.eduverseLogo,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+        ),
       ),
     );
   }
@@ -150,7 +171,9 @@ class _WelcomeText extends StatelessWidget {
         Text(
           "Sign in to continue to your account",
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.6),
             fontSize: 14,
           ),
         ),
@@ -210,7 +233,9 @@ class _LoginForm extends StatelessWidget {
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
                 size: 20,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ),
             validator: (value) {
@@ -236,7 +261,9 @@ class _LoginForm extends StatelessWidget {
             child: Text(
               "Forgot Password?",
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
@@ -269,7 +296,9 @@ class _SocialDivider extends StatelessWidget {
           child: Text(
             "or continue with",
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.5),
               fontSize: 12,
             ),
           ),
@@ -282,60 +311,6 @@ class _SocialDivider extends StatelessWidget {
 
 class _GoogleButton extends StatelessWidget {
   const _GoogleButton();
-
-  Future<String?> _showRoleBottomSheet(BuildContext context) {
-    return showModalBottomSheet<String>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppSizes.radiusLg2)),
-      ),
-      builder: (context) {
-        final cs = Theme.of(context).colorScheme;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.onSurface.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "Choose Account Type",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: cs.onSurface),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "Select how you want to use Eduverse",
-                  style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
-                ),
-                const SizedBox(height: 24),
-                _RoleOptionTile(
-                  icon: Icons.school_outlined,
-                  title: "Student",
-                  subtitle: "Join courses and learn",
-                  onTap: () => Navigator.pop(context, 'STUDENT'),
-                ),
-                const SizedBox(height: 12),
-                _RoleOptionTile(
-                  icon: Icons.auto_awesome,
-                  title: "Mentor",
-                  subtitle: "Create courses and teach",
-                  onTap: () => Navigator.pop(context, 'MENTOR'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -359,13 +334,12 @@ class _GoogleButton extends StatelessWidget {
                   }
 
                   if (statusCode == 202) {
-                    final role = await _showRoleBottomSheet(context);
-                    if (role == null || !context.mounted) return;
-
-                    final success = await authProvider.completeGoogleSignIn(idToken, role);
-                    if (success && context.mounted) {
-                      Navigator.pushReplacementNamed(context, AppRoutes.home);
-                    }
+                    if (!context.mounted) return;
+                    Navigator.pushNamed(
+                      context,
+                      AppRoutes.roleSelection,
+                      arguments: {'idToken': idToken},
+                    );
                   }
                 },
           style: OutlinedButton.styleFrom(
@@ -378,7 +352,9 @@ class _GoogleButton extends StatelessWidget {
                   : Colors.transparent,
               width: 1,
             ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppSizes.radiusXl)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -414,60 +390,6 @@ class _GoogleButton extends StatelessWidget {
   }
 }
 
-class _RoleOptionTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _RoleOptionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.themeColor.withValues(alpha: 0.3)),
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: AppColors.themeColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-              ),
-                child: Icon(icon, color: AppColors.themeColor, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: cs.onSurface)),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6))),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, color: AppColors.themeColor, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _Footer extends StatelessWidget {
   const _Footer();
 
@@ -479,7 +401,9 @@ class _Footer extends StatelessWidget {
         Text(
           "Didn't have an account? ",
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.6),
             fontSize: 14,
           ),
         ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
@@ -25,9 +27,21 @@ class _PasswordAndSecurityScreenState extends State<PasswordAndSecurityScreen> {
   bool _isCurrentObscure = true;
   bool _isNewObscure = true;
   bool _isConfirmObscure = true;
+  String? _formError;
+  Timer? _errorTimer;
+
+  void _scheduleErrorClear() {
+    _formError = null;
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _formKey.currentState?.reset();
+    });
+  }
 
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -43,15 +57,18 @@ class _PasswordAndSecurityScreenState extends State<PasswordAndSecurityScreen> {
   bool get _isEmailFormFilled => _emailController.text.isNotEmpty;
 
   Future<void> _handleSubmit() async {
+    _errorTimer?.cancel();
     if (_isPasswordFormFilled && _isEmailFormFilled) {
-      ToastService.showError(
-        'Fill in only one section at a time',
-      );
+      setState(() => _formError = 'Fill in only one section at a time');
+      _scheduleErrorClear();
       return;
     }
 
     if (_isPasswordFormFilled) {
-      if (!_formKey.currentState!.validate()) return;
+      if (!_formKey.currentState!.validate()) {
+        _scheduleErrorClear();
+        return;
+      }
 
       final provider = context.read<ChangePasswordProvider>();
       await provider.changePassword(
@@ -75,7 +92,8 @@ class _PasswordAndSecurityScreenState extends State<PasswordAndSecurityScreen> {
       return;
     }
 
-    ToastService.showError('Fill in a section to submit');
+    setState(() => _formError = 'Fill in a section to submit');
+    _scheduleErrorClear();
   }
 
   @override
@@ -226,6 +244,14 @@ class _PasswordAndSecurityScreenState extends State<PasswordAndSecurityScreen> {
                   keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 32),
+                if (_formError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _formError!,
+                      style: TextStyle(fontSize: 13, color: cs.error),
+                    ),
+                  ),
                 Consumer<ChangePasswordProvider>(
                   builder: (context, provider, _) => AuthButton(
                     text: 'Submit',

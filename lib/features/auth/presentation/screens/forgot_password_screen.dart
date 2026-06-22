@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:edtech/app/app_routes.dart';
-import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/password_reset_provider.dart';
@@ -18,17 +19,30 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  Timer? _errorTimer;
+
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _formKey.currentState?.reset();
+    });
+  }
 
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _emailController.dispose();
     super.dispose();
   }
 
   void _handleForgotPassword() async {
+    if (!_formKey.currentState!.validate()) {
+      _scheduleErrorClear();
+      return;
+    }
     final email = _emailController.text.trim();
-    if (email.isEmpty) { ToastService.showError('Email address is required'); return; }
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) { ToastService.showError('Please enter a valid email address'); return; }
 
     final provider = context.read<PasswordResetProvider>();
     final success = await provider.forgotPassword(email);
@@ -53,7 +67,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 const SizedBox(height: 40),
                 const _HeaderSection(),
                 const SizedBox(height: 32),
-                _ForgotForm(emailController: _emailController, onSendPressed: _handleForgotPassword),
+                Form(
+                  key: _formKey,
+                  child: _ForgotForm(emailController: _emailController, onSendPressed: _handleForgotPassword),
+                ),
               ],
             ),
           ),
@@ -90,7 +107,18 @@ class _ForgotForm extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CustomTextField(label: "Email Address", hint: "joy411935@gmail.com", controller: emailController, keyboardType: TextInputType.emailAddress),
+        CustomTextField(
+          label: "Email Address",
+          hint: "joy411935@gmail.com",
+          isRequired: true,
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          validator: (value) {
+            if (value == null || value.isEmpty) return 'Email address is required';
+            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) return 'Please enter a valid email address';
+            return null;
+          },
+        ),
         const SizedBox(height: 20),
         Text("We'll send you a verification code to reset your password.", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13, fontWeight: FontWeight.w500)),
         const SizedBox(height: 32),

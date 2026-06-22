@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -27,6 +29,22 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final ValueNotifier<int> _resetNotifier = ValueNotifier(0);
+  Timer? _errorTimer;
+
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() {
+        _nameError = null;
+        _usernameError = null;
+        _phoneError = null;
+        _professionError = null;
+        _countryError = null;
+        _dobError = null;
+      });
+    });
+  }
 
   late final TextEditingController _nameController;
   late final TextEditingController _usernameController;
@@ -247,7 +265,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _saveProfileData() async {
-    if (!_validate()) return;
+    if (!_validate()) {
+      _scheduleErrorClear();
+      return;
+    }
 
     final isMentor =
         context.read<MentorProfileProvider>().profile?.role == 'MENTOR' ||
@@ -328,6 +349,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _resetNotifier.dispose();
     _nameController.dispose();
     _usernameController.dispose();

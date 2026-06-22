@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
@@ -23,13 +25,24 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
   final _descCtrl = TextEditingController();
   final _reqCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  Timer? _errorTimer;
 
   String _selectedLanguage = 'English';
   String _selectedLevel = 'Beginner';
   String _courseType = 'FREE';
 
+  void _scheduleErrorClear() {
+    _errorTimer?.cancel();
+    _errorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _formKey.currentState?.reset();
+    });
+  }
+
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _titleCtrl.dispose();
     _shortDescCtrl.dispose();
     _descCtrl.dispose();
@@ -39,16 +52,8 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
   }
 
   Future<void> _handleSubmit() async {
-    if (_titleCtrl.text.trim().isEmpty) {
-      ToastService.showError('Title is required');
-      return;
-    }
-    if (_shortDescCtrl.text.trim().isEmpty) {
-      ToastService.showError('Short description is required');
-      return;
-    }
-    if (_descCtrl.text.trim().isEmpty) {
-      ToastService.showError('Description is required');
+    if (!_formKey.currentState!.validate()) {
+      _scheduleErrorClear();
       return;
     }
 
@@ -105,73 +110,87 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
             Expanded(
               child: GestureDetector(
                 onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSizes.horizontalPadding,
-                    vertical: 16,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildLabel('Title', cs),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _titleCtrl,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) =>
-                            FocusManager.instance.primaryFocus?.unfocus(),
-                        style: TextStyle(color: cs.onSurface),
-                        decoration: _inputDecoration(
-                          cs,
-                          'Enter your course title',
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.horizontalPadding,
+                      vertical: 16,
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildLabel('Title', cs),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _titleCtrl,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          style: TextStyle(color: cs.onSurface),
+                          decoration: _inputDecoration(
+                            cs,
+                            'Enter your course title',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) return 'Title is required';
+                            return null;
+                          },
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Short Description', cs),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _shortDescCtrl,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) =>
-                            FocusManager.instance.primaryFocus?.unfocus(),
-                        style: TextStyle(color: cs.onSurface),
-                        decoration: _inputDecoration(
-                          cs,
-                          'Enter short description',
+                        const SizedBox(height: 16),
+                        _buildLabel('Short Description', cs),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _shortDescCtrl,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          style: TextStyle(color: cs.onSurface),
+                          decoration: _inputDecoration(
+                            cs,
+                            'Enter short description',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) return 'Short description is required';
+                            return null;
+                          },
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Description', cs),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _descCtrl,
-                        maxLines: 4,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) =>
-                            FocusManager.instance.primaryFocus?.unfocus(),
-                        style: TextStyle(color: cs.onSurface),
-                        decoration: _inputDecoration(
-                          cs,
-                          'Enter your description',
-                          borderRadius: 16,
+                        const SizedBox(height: 16),
+                        _buildLabel('Description', cs),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _descCtrl,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          style: TextStyle(color: cs.onSurface),
+                          decoration: _inputDecoration(
+                            cs,
+                            'Enter your description',
+                            borderRadius: 16,
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) return 'Description is required';
+                            return null;
+                          },
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Requirements', cs),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _reqCtrl,
-                        maxLines: 4,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) =>
-                            FocusManager.instance.primaryFocus?.unfocus(),
-                        style: TextStyle(color: cs.onSurface),
-                        decoration: _inputDecoration(
-                          cs,
-                          'Enter your requirements',
-                          borderRadius: 16,
+                        const SizedBox(height: 16),
+                        _buildLabel('Requirements', cs),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _reqCtrl,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          style: TextStyle(color: cs.onSurface),
+                          decoration: _inputDecoration(
+                            cs,
+                            'Enter your requirements',
+                            borderRadius: 16,
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 16),
                       _buildLabel('Language', cs),
                       const SizedBox(height: 8),
@@ -314,6 +333,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                   ),
                 ),
               ),
+            ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
