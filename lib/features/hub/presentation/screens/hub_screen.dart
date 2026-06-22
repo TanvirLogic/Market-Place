@@ -79,160 +79,164 @@ class _HubScreenState extends State<HubScreen> {
         context.watch<MentorProfileProvider>().profile;
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(
-          left: AppSizes.horizontalPadding,
-          right: AppSizes.horizontalPadding,
-          top: 8,
-          bottom: 24,
-        ),
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _HubHeader(cs: cs, isDark: isDark, profile: profile),
-            const SizedBox(height: 16),
-            _SettingsGroupCard(
-              title: 'General Settings',
-              backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
-              cs: cs,
-              isDark: isDark,
-              children: [
-                _MenuRowTile(
-                  iconAsset: Images.hubProfileDetails,
-                  label: 'Profile Details',
-                  onTap: () => AppRoutes.navigateToProfile(
-                    context,
-                    profile?.role ?? 'STUDENT',
+      child: PopScope(
+        canPop: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(
+            left: AppSizes.horizontalPadding,
+            right: AppSizes.horizontalPadding,
+            top: 8,
+            bottom: 24,
+          ),
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _HubHeader(cs: cs, isDark: isDark, profile: profile),
+              const SizedBox(height: 16),
+              _SettingsGroupCard(
+                title: 'General Settings',
+                backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
+                cs: cs,
+                isDark: isDark,
+                children: [
+                  _MenuRowTile(
+                    iconAsset: Images.hubProfileDetails,
+                    label: 'Profile Details',
+                    onTap: () => AppRoutes.navigateToProfile(
+                      context,
+                      profile?.role ?? 'STUDENT',
+                    ),
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
                   ),
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-                _MenuRowTile(
-                  iconAsset: Images.hubPasswordSecurity,
-                  label: 'Password & Security',
-                  onTap: () => Navigator.pushNamed(
-                    context,
-                    AppRoutes.passwordAndSecurity,
+                  _MenuRowTile(
+                    iconAsset: Images.hubPasswordSecurity,
+                    label: 'Password & Security',
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      AppRoutes.passwordAndSecurity,
+                    ),
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
                   ),
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _SettingsGroupCard(
-              title: 'Payment & Activity',
-              backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
-              cs: cs,
-              isDark: isDark,
-              children: [
-                _MenuRowTile(
-                  iconAsset: Images.hubMentorDashboard,
-                  label: 'Mentor Dashboard',
-                  onTap: () =>
-                      Navigator.pushNamed(context, AppRoutes.mentorDashboard),
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-                _MenuRowTile(
-                  iconAsset: Images.hubTransaction,
-                  label: 'Transactions & Revenue',
-                  onTap: () => Navigator.pushNamed(
-                    context,
-                    AppRoutes.paymentsAndRevenue,
+                ],
+              ),
+              const SizedBox(height: 16),
+              _SettingsGroupCard(
+                title: 'Payment & Activity',
+                backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
+                cs: cs,
+                isDark: isDark,
+                children: [
+                  _MenuRowTile(
+                    iconAsset: Images.hubMentorDashboard,
+                    label: 'Mentor Dashboard',
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRoutes.mentorDashboard),
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
                   ),
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-                _MenuRowTile(
-                  iconAsset: Images.hubAdAccount,
-                  label: 'Ad Account',
-                  onTap: () =>
-                      Navigator.pushNamed(context, AppRoutes.adsManager),
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _SettingsGroupCard(
-              title: 'Personalize',
-              backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
-              cs: cs,
-              isDark: isDark,
-              children: [
-                _ToggleRowTile(
-                  iconAsset: Images.hubDarkMode,
-                  label: 'Dark Mode',
-                  value: context.watch<ThemeProvider>().isDarkMode,
-                  onChanged: (_) => context.read<ThemeProvider>().toggleTheme(),
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-                _ToggleRowTile(
-                  iconAsset: Images.hubNotification,
-                  label: 'Notification',
-                  value: true,
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-                _ToggleRowTile(
-                  iconAsset: Images.hubMail,
-                  label: 'Email Notification',
-                  value: false,
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _SettingsGroupCard(
-              title: 'Links',
-              backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
-              cs: cs,
-              isDark: isDark,
-              children: [
-                _MenuRowTile(
-                  icon: Icons.help_outline_rounded,
-                  label: 'Terms & Policy',
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-                _MenuRowTile(
-                  icon: Icons.headset_mic_outlined,
-                  label: 'Help Center',
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-                _MenuRowTile(
-                  icon: Icons.phone_android_rounded,
-                  label: 'App Version',
-                  trailingText: 'v 2.37.0',
-                  cs: cs,
-                  isDark: isDark,
-                  isGeneral: true,
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _LogoutButton(
-              cs: cs,
-              isDark: isDark,
-              onPressed: () => _showLogoutDialog(context),
-            ),
-            const SizedBox(height: 16),
-          ],
+                  _MenuRowTile(
+                    iconAsset: Images.hubTransaction,
+                    label: 'Transactions & Revenue',
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      AppRoutes.paymentsAndRevenue,
+                    ),
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                  _MenuRowTile(
+                    iconAsset: Images.hubAdAccount,
+                    label: 'Ad Account',
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRoutes.adsManager),
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _SettingsGroupCard(
+                title: 'Personalize',
+                backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
+                cs: cs,
+                isDark: isDark,
+                children: [
+                  _ToggleRowTile(
+                    iconAsset: Images.hubDarkMode,
+                    label: 'Dark Mode',
+                    value: context.watch<ThemeProvider>().isDarkMode,
+                    onChanged: (_) =>
+                        context.read<ThemeProvider>().toggleTheme(),
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                  _ToggleRowTile(
+                    iconAsset: Images.hubNotification,
+                    label: 'Notification',
+                    value: true,
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                  _ToggleRowTile(
+                    iconAsset: Images.hubMail,
+                    label: 'Email Notification',
+                    value: false,
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _SettingsGroupCard(
+                title: 'Links',
+                backgroundColor: isDark ? cs.surfaceContainerLow : Colors.white,
+                cs: cs,
+                isDark: isDark,
+                children: [
+                  _MenuRowTile(
+                    icon: Icons.help_outline_rounded,
+                    label: 'Terms & Policy',
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                  _MenuRowTile(
+                    icon: Icons.headset_mic_outlined,
+                    label: 'Help Center',
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                  _MenuRowTile(
+                    icon: Icons.phone_android_rounded,
+                    label: 'App Version',
+                    trailingText: 'v 2.37.0',
+                    cs: cs,
+                    isDark: isDark,
+                    isGeneral: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              _LogoutButton(
+                cs: cs,
+                isDark: isDark,
+                onPressed: () => _showLogoutDialog(context),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );

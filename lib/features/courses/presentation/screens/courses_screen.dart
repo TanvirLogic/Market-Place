@@ -46,144 +46,165 @@ class _CoursesScreenState extends State<CoursesScreen> {
           },
           child: RefreshIndicator(
             onRefresh: provider.refresh,
-            child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(
-              left: AppSizes.horizontalPadding,
-              right: AppSizes.horizontalPadding,
-              top: 8,
-              bottom: 24,
-            ),
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: PopScope(
+              canPop: false,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(
+                  left: AppSizes.horizontalPadding,
+                  right: AppSizes.horizontalPadding,
+                  top: 8,
+                  bottom: 24,
+                ),
+                child: SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Image.asset(Images.eduverseP, width: 113, height: 32),
-                      GestureDetector(
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          AppRoutes.notifications,
-                        ),
-                        onLongPress: () {},
-                        child: SvgPicture.asset(Images.notificationIcon),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    decoration: InputDecoration(
-                      hintText: 'Course Name, Author...',
-                      prefixIcon: Icon(
-                        Icons.search,
-                        color: cs.onSurface.withValues(alpha: 0.6),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                      filled: true,
-                      fillColor: isDark
-                          ? cs.surfaceContainerHighest
-                          : Colors.white,
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-                        borderSide: BorderSide(
-                          color: isDark ? cs.outlineVariant : AppColors.border,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  if (provider.isLoading && provider.courses.isEmpty)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 60),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  else if (provider.errorMessage != null &&
-                      provider.courses.isEmpty)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 60),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 48,
-                              color: cs.error,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Image.asset(Images.eduverseP, width: 113, height: 32),
+                          GestureDetector(
+                            onTap: () => Navigator.pushNamed(
+                              context,
+                              AppRoutes.notifications,
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              provider.errorMessage!,
-                              style: TextStyle(color: cs.error),
-                            ),
-                            const SizedBox(height: 12),
-                            AuthButton(
-                              text: 'Retry',
-                              onPressed: provider.refresh,
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else ...[
-                    if (provider.enrolledCourses.isNotEmpty) ...[
-                      Text(
-                        'My Course (${provider.enrolledCourses.length})',
-                        style: TextStyle(
-                          fontSize: 20,
-                          color: isDark ? Colors.white : AppColors.primaryText,
-                        ),
+                            onLongPress: () {},
+                            child: SvgPicture.asset(Images.notificationIcon),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
-                      ..._buildMyCourses(provider.enrolledCourses, cs, isDark),
+                      TextFormField(
+                        decoration: InputDecoration(
+                          hintText: 'Course Name, Author...',
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: cs.onSurface.withValues(alpha: 0.6),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                          ),
+                          filled: true,
+                          fillColor: isDark
+                              ? cs.surfaceContainerHighest
+                              : Colors.white,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppSizes.radiusXl,
+                            ),
+                            borderSide: BorderSide(
+                              color: isDark
+                                  ? cs.outlineVariant
+                                  : AppColors.border,
+                            ),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppSizes.radiusXl,
+                            ),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 24),
-                    ],
-                    if (provider.courses.isNotEmpty) ...[
-                      Text(
-                        'Recommended Course',
-                        style: TextStyle(
-                          fontSize: 20,
-                          color: isDark ? Colors.white : AppColors.primaryText,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ...provider.courses.map(
-                        (course) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _RecommendedCard(
-                            course: course,
-                            cs: cs,
-                            isDark: isDark,
+                      if (provider.isLoading && provider.courses.isEmpty)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.only(top: 60),
+                            child: CircularProgressIndicator(),
                           ),
-                        ),
-                      ),
-                      if (provider.isLoadingMore)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 12, bottom: 24),
-                          child: Center(
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else if (provider.errorMessage != null &&
+                          provider.courses.isEmpty)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 60),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 48,
+                                  color: cs.error,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  provider.errorMessage!,
+                                  style: TextStyle(color: cs.error),
+                                ),
+                                const SizedBox(height: 12),
+                                AuthButton(
+                                  text: 'Retry',
+                                  onPressed: provider.refresh,
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                        )
+                      else ...[
+                        if (provider.enrolledCourses.isNotEmpty) ...[
+                          Text(
+                            'My Course (${provider.enrolledCourses.length})',
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.primaryText,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ..._buildMyCourses(
+                            provider.enrolledCourses,
+                            cs,
+                            isDark,
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                        if (provider.courses.isNotEmpty) ...[
+                          Text(
+                            'Recommended Course',
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.primaryText,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ...provider.courses.map(
+                            (course) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _RecommendedCard(
+                                course: course,
+                                cs: cs,
+                                isDark: isDark,
+                              ),
+                            ),
+                          ),
+                          if (provider.isLoadingMore)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 12, bottom: 24),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ],
                     ],
-                  ],
-                ],
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      );
-    },
-  );
+        );
+      },
+    );
   }
 
   List<Widget> _buildMyCourses(

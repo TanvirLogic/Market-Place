@@ -38,91 +38,94 @@ class _SocialPageState extends State<SocialPage> {
     final isDark = cs.brightness == Brightness.dark;
     final isSearchActive = _currentQuery.isNotEmpty;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(
-        left: AppSizes.horizontalPadding,
-        right: AppSizes.horizontalPadding,
-        top: 8,
-        bottom: 24,
-      ),
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Image.asset(Images.eduverseP, width: 113, height: 32),
-                SvgPicture.asset(Images.notificationIcon),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: isSearchActive
-                    ? 'Code with Mosh'
-                    : 'Search Videos or Content...',
-                prefixIcon: Icon(
-                  Icons.search,
-                  color: cs.onSurface.withValues(alpha: 0.6),
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                filled: true,
-                fillColor: isDark ? cs.surfaceContainerHighest : Colors.white,
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-                  borderSide: BorderSide(
-                    color: isDark ? cs.outlineVariant : AppColors.border,
+    return PopScope(
+      canPop: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(
+          left: AppSizes.horizontalPadding,
+          right: AppSizes.horizontalPadding,
+          top: 8,
+          bottom: 24,
+        ),
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Image.asset(Images.eduverseP, width: 113, height: 32),
+                  SvgPicture.asset(Images.notificationIcon),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: isSearchActive
+                      ? 'Code with Mosh'
+                      : 'Search Videos or Content...',
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                  filled: true,
+                  fillColor: isDark ? cs.surfaceContainerHighest : Colors.white,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+                    borderSide: BorderSide(
+                      color: isDark ? cs.outlineVariant : AppColors.border,
+                    ),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+                    borderSide: BorderSide.none,
                   ),
                 ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-                  borderSide: BorderSide.none,
+              ),
+              const SizedBox(height: 24),
+              if (!isSearchActive) ...[
+                _VideoFeedCard(
+                  title: 'Top 5 Programming Languages to Learn in 2026',
+                  author: 'Code with mosh',
+                  timeAgo: '2 min Ago',
+                  videoDuration: '12:34',
+                  thumbnailColor: cs.surface,
+                  cs: cs,
+                  isDark: isDark,
                 ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (!isSearchActive) ...[
-              _VideoFeedCard(
-                title: 'Top 5 Programming Languages to Learn in 2026',
-                author: 'Code with mosh',
-                timeAgo: '2 min Ago',
-                videoDuration: '12:34',
-                thumbnailColor: cs.surface,
-                cs: cs,
-                isDark: isDark,
-              ),
-              const SizedBox(height: 16),
-              _PromoBanner(cs: cs, isDark: isDark),
-            ] else ...[
-              Text(
-                'Search Result for "$_currentQuery"',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withValues(alpha: 0.7),
+                const SizedBox(height: 16),
+                _PromoBanner(cs: cs, isDark: isDark),
+              ] else ...[
+                Text(
+                  'Search Result for "$_currentQuery"',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withValues(alpha: 0.7),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _CreatorCard(
-                name: 'Code with Mosh',
-                title: 'Senior Software Engineer',
-                cs: cs,
-                isDark: isDark,
-              ),
-              const SizedBox(height: 20),
-              _VideoFeedCard(
-                title: 'Top 5 Programming Languages to Learn in 2026',
-                author: 'Code with mosh',
-                timeAgo: '2 min Ago',
-                videoDuration: '12:34',
-                thumbnailColor: cs.surface,
-                cs: cs,
-                isDark: isDark,
-              ),
+                const SizedBox(height: 16),
+                _CreatorCard(
+                  name: 'Code with Mosh',
+                  title: 'Senior Software Engineer',
+                  cs: cs,
+                  isDark: isDark,
+                ),
+                const SizedBox(height: 20),
+                _VideoFeedCard(
+                  title: 'Top 5 Programming Languages to Learn in 2026',
+                  author: 'Code with mosh',
+                  timeAgo: '2 min Ago',
+                  videoDuration: '12:34',
+                  thumbnailColor: cs.surface,
+                  cs: cs,
+                  isDark: isDark,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
