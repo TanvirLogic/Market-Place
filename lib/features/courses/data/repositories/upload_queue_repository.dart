@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:edtech/features/courses/data/models/upload_task.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -16,20 +18,36 @@ class UploadQueueItem {
   final int bytesUploaded;
   final String? errorMessage;
   final String createdAt;
+  final String uploadType;
+  final String? metadata;
 
   UploadQueueItem({
     this.id,
     required this.filePath,
     required this.title,
-    required this.videoDuration,
-    required this.fileSize,
+    this.videoDuration = 0,
+    this.fileSize = 0,
     this.uploadUrl,
     this.fileUrl,
     this.status = 'pending',
     this.bytesUploaded = 0,
     this.errorMessage,
     String? createdAt,
+    this.uploadType = 'video_post',
+    this.metadata,
   }) : createdAt = createdAt ?? DateTime.now().toIso8601String();
+
+  UploadTaskType get taskType => UploadTaskType.fromDb(uploadType);
+
+  T? parseMetadata<T>(T Function(Map<String, dynamic>) fromJson) {
+    if (metadata == null || metadata!.isEmpty) return null;
+    try {
+      final map = jsonDecode(metadata!) as Map<String, dynamic>;
+      return fromJson(map);
+    } catch (_) {
+      return null;
+    }
+  }
 
   UploadQueueItem copyWith({
     int? id,
@@ -43,6 +61,8 @@ class UploadQueueItem {
     int? bytesUploaded,
     String? errorMessage,
     String? createdAt,
+    String? uploadType,
+    String? metadata,
   }) {
     return UploadQueueItem(
       id: id ?? this.id,
@@ -56,6 +76,8 @@ class UploadQueueItem {
       bytesUploaded: bytesUploaded ?? this.bytesUploaded,
       errorMessage: errorMessage ?? this.errorMessage,
       createdAt: createdAt ?? this.createdAt,
+      uploadType: uploadType ?? this.uploadType,
+      metadata: metadata ?? this.metadata,
     );
   }
 
@@ -72,6 +94,8 @@ class UploadQueueItem {
       'bytesUploaded': bytesUploaded,
       'errorMessage': errorMessage,
       'createdAt': createdAt,
+      'uploadType': uploadType,
+      'metadata': metadata,
     };
   }
 
@@ -80,14 +104,16 @@ class UploadQueueItem {
       id: map['id'] as int?,
       filePath: map['filePath'] as String,
       title: map['title'] as String,
-      videoDuration: map['videoDuration'] as int,
-      fileSize: map['fileSize'] as int,
+      videoDuration: map['videoDuration'] as int? ?? 0,
+      fileSize: map['fileSize'] as int? ?? 0,
       uploadUrl: map['uploadUrl'] as String?,
       fileUrl: map['fileUrl'] as String?,
       status: map['status'] as String? ?? 'pending',
       bytesUploaded: map['bytesUploaded'] as int? ?? 0,
       errorMessage: map['errorMessage'] as String?,
       createdAt: map['createdAt'] as String?,
+      uploadType: map['uploadType'] as String? ?? 'video_post',
+      metadata: map['metadata'] as String?,
     );
   }
 }
@@ -107,7 +133,7 @@ class UploadQueueRepository {
     AppLogger.i('UploadQueueRepository: opening database at $path');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE upload_queue (
@@ -121,7 +147,9 @@ class UploadQueueRepository {
             status TEXT NOT NULL DEFAULT 'pending',
             bytesUploaded INTEGER NOT NULL DEFAULT 0,
             errorMessage TEXT,
-            createdAt TEXT NOT NULL
+            createdAt TEXT NOT NULL,
+            uploadType TEXT NOT NULL DEFAULT 'video_post',
+            metadata TEXT
           )
         ''');
         await db.execute(
@@ -143,12 +171,23 @@ class UploadQueueRepository {
               status TEXT NOT NULL DEFAULT 'pending',
               bytesUploaded INTEGER NOT NULL DEFAULT 0,
               errorMessage TEXT,
-              createdAt TEXT NOT NULL
+              createdAt TEXT NOT NULL,
+              uploadType TEXT NOT NULL DEFAULT 'video_post',
+              metadata TEXT
             )
           ''');
           await db.execute(
             'CREATE INDEX idx_upload_queue_status ON upload_queue(status)',
           );
+        }
+        if (oldVersion >= 2 && oldVersion < 3) {
+          await db.execute(
+            "ALTER TABLE upload_queue ADD COLUMN uploadType TEXT NOT NULL DEFAULT 'video_post'",
+          );
+          await db.execute(
+            "ALTER TABLE upload_queue ADD COLUMN metadata TEXT",
+          );
+          AppLogger.i('UploadQueueRepository: migrated to v3 — added uploadType and metadata');
         }
       },
     );
@@ -157,7 +196,7 @@ class UploadQueueRepository {
   static Future<int> insert(UploadQueueItem item) async {
     final db = await database;
     final id = await db.insert('upload_queue', item.toMap());
-    AppLogger.i('UploadQueueRepository: inserted item id=$id, title=${item.title}');
+    AppLogger.i('UploadQueueRepository: inserted item id=$id, type=${item.uploadType}, title=${item.title}');
     return id;
   }
 
@@ -194,6 +233,17 @@ class UploadQueueRepository {
     return maps.map((m) => UploadQueueItem.fromMap(m)).toList();
   }
 
+  static Future<List<UploadQueueItem>> getByStatus(String status) async {
+    final db = await database;
+    final maps = await db.query(
+      'upload_queue',
+      where: 'status = ?',
+      whereArgs: [status],
+      orderBy: 'id ASC',
+    );
+    return maps.map((m) => UploadQueueItem.fromMap(m)).toList();
+  }
+
   static Future<void> updateUrls({
     required int id,
     required String uploadUrl,
@@ -220,6 +270,19 @@ class UploadQueueRepository {
     await db.update(
       'upload_queue',
       {'bytesUploaded': bytesUploaded},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<void> updateMetadata({
+    required int id,
+    required String metadata,
+  }) async {
+    final db = await database;
+    await db.update(
+      'upload_queue',
+      {'metadata': metadata},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -275,6 +338,25 @@ class UploadQueueRepository {
       ['pending'],
     );
     return (result.first['cnt'] as int?) ?? 0;
+  }
+
+  static Future<int> countActive() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) as cnt FROM upload_queue WHERE status NOT IN ('completed', 'failed')",
+    );
+    return (result.first['cnt'] as int?) ?? 0;
+  }
+
+  static Future<void> resetStaleUploading({Duration olderThan = const Duration(hours: 1)}) async {
+    final db = await database;
+    final cutoff = DateTime.now().subtract(olderThan).toIso8601String();
+    await db.update(
+      'upload_queue',
+      {'status': 'pending', 'uploadUrl': null, 'fileUrl': null},
+      where: "status = 'uploading' AND createdAt < ?",
+      whereArgs: [cutoff],
+    );
   }
 
   static Future<void> close() async {

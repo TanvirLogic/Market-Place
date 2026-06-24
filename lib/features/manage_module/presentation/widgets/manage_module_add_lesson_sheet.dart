@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
@@ -61,22 +59,12 @@ class _ManageModuleAddLessonSheetState
   final _titleController = TextEditingController();
   final _imagePicker = ImagePicker();
   final _formKey = GlobalKey<FormState>();
-  Timer? _errorTimer;
   XFile? _selectedFile;
   bool _isUploading = false;
   bool _isPicking = false;
 
-  void _scheduleErrorClear() {
-    _errorTimer?.cancel();
-    _errorTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      _formKey.currentState?.reset();
-    });
-  }
-
   @override
   void dispose() {
-    _errorTimer?.cancel();
     _titleController.dispose();
     super.dispose();
   }
@@ -106,24 +94,16 @@ class _ManageModuleAddLessonSheetState
       ToastService.showError('Please select a file first');
       return;
     }
-    if (!_formKey.currentState!.validate()) {
-      _scheduleErrorClear();
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
     final title = _titleController.text.trim();
-
-    setState(() => _isUploading = true);
-
-    await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
     Navigator.of(context).pop();
-    ToastService.showSuccess('Your Video is being uploaded');
 
     widget.onAddLesson(
       title,
       _selectedFile!,
-      (p) {},
+      (_) {},
     );
   }
 

@@ -5,9 +5,11 @@ class Lesson {
   String title;
   final String duration;
   final LessonType type;
-  final String? videoUrl;
+  String? videoUrl;
   final String? fileUrl;
   final String? fileType;
+  double uploadProgress;
+  String uploadStatus;
 
   Lesson({
     required this.id,
@@ -17,6 +19,8 @@ class Lesson {
     this.videoUrl,
     this.fileUrl,
     this.fileType,
+    this.uploadProgress = 0.0,
+    this.uploadStatus = 'completed',
   });
 }
 

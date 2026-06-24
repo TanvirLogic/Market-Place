@@ -1,3 +1,4 @@
+import 'package:edtech/features/hub/services/tawk_chat_service.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
 import 'package:edtech/features/auth/data/models/auth_controller.dart';
@@ -60,6 +61,7 @@ class _HubScreenState extends State<HubScreen> {
       _fetchTriggered = false;
 
       await context.read<SignInProvider>().logout();
+      TawkChatService().logout();
       if (context.mounted) {
         Navigator.pushNamedAndRemoveUntil(
           context,
@@ -214,6 +216,8 @@ class _HubScreenState extends State<HubScreen> {
                   _MenuRowTile(
                     icon: Icons.headset_mic_outlined,
                     label: 'Help Center',
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRoutes.helpCenter),
                     cs: cs,
                     isDark: isDark,
                     isGeneral: true,
@@ -221,7 +225,7 @@ class _HubScreenState extends State<HubScreen> {
                   _MenuRowTile(
                     icon: Icons.phone_android_rounded,
                     label: 'App Version',
-                    trailingText: 'v 2.37.0',
+                    // trailingText: 'v 2.37.0',
                     cs: cs,
                     isDark: isDark,
                     isGeneral: true,

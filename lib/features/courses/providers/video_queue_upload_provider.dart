@@ -1,24 +1,20 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:edtech/app/app.dart';
-import 'package:edtech/features/auth/data/models/auth_controller.dart';
 import 'package:edtech/features/courses/data/helpers/video_metadata_helper.dart';
 import 'package:edtech/features/courses/data/repositories/upload_queue_repository.dart';
 import 'package:edtech/features/courses/services/background_upload_service.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
-import 'package:edtech/global/core/services/upload_notification_service.dart';
-import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
 
+/// @deprecated Use [UnifiedUploadQueueProvider] instead.
+/// Kept for backward compatibility — delegates to the unified provider pattern.
 class VideoQueueUploadProvider extends ChangeNotifier {
   List<UploadQueueItem> _queue = [];
   UploadQueueItem? _activeItem;
   int _activeProgress = 0;
   bool _isBackgroundRunning = false;
   bool _isPaused = false;
-  StreamSubscription? _progressSub;
 
   List<UploadQueueItem> get queue => List.unmodifiable(_queue);
   UploadQueueItem? get activeItem => _activeItem;
@@ -46,91 +42,22 @@ class VideoQueueUploadProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     await _loadQueue();
-    _listenToBackground();
   }
 
   Future<void> _loadQueue() async {
     try {
       _queue = await UploadQueueRepository.getActive();
       final allItems = await UploadQueueRepository.getAll();
-      final active =
-          allItems.where((item) =>
+      final active = allItems
+          .where((item) =>
               item.status == 'uploading' || item.status == 'pending')
-              .toList();
+          .toList();
       if (active.isNotEmpty) {
         _activeItem = active.first;
       }
       notifyListeners();
     } catch (e) {
       _queue = [];
-    }
-  }
-
-  void _listenToBackground() {
-    try {
-      _progressSub?.cancel();
-      _progressSub =
-          FlutterBackgroundService().on('uploadProgress').listen((data) {
-            if (data is Map<String, dynamic>) {
-              final queueId = data['queueId'] as int?;
-              final status = data['status'] as String?;
-              final progress = data['progress'] as int? ?? 0;
-
-              if (status == 'uploading' && queueId != null) {
-                _updateItemProgress(queueId, progress);
-              } else if (status == 'completed' && queueId != null) {
-                _markItemCompleted(queueId);
-              } else if (status == 'failed' && queueId != null) {
-                _markItemFailed(queueId);
-              }
-            }
-          });
-    } catch (_) {}
-  }
-
-  void _updateItemProgress(int queueId, int progress) {
-    final idx = _queue.indexWhere((item) => item.id == queueId);
-    if (idx >= 0) {
-      _queue[idx] = _queue[idx].copyWith(status: 'uploading');
-    }
-    if (_activeItem?.id == queueId) {
-      _activeProgress = progress;
-    }
-    notifyListeners();
-  }
-
-  void _markItemCompleted(int queueId) async {
-    final idx = _queue.indexWhere((item) => item.id == queueId);
-    if (idx >= 0) {
-      _queue[idx] = _queue[idx].copyWith(status: 'completed');
-    }
-    if (_activeItem?.id == queueId) {
-      _activeItem = null;
-      _activeProgress = 0;
-    }
-    _checkNextActive();
-    notifyListeners();
-  }
-
-  void _markItemFailed(int queueId) async {
-    final idx = _queue.indexWhere((item) => item.id == queueId);
-    if (idx >= 0) {
-      _queue[idx] = _queue[idx].copyWith(status: 'failed');
-    }
-    if (_activeItem?.id == queueId) {
-      _activeItem = null;
-      _activeProgress = 0;
-    }
-    _checkNextActive();
-    notifyListeners();
-  }
-
-  void _checkNextActive() {
-    if (_activeItem != null) return;
-    final next = _queue.where((item) => item.status == 'pending').toList();
-    if (next.isNotEmpty) {
-      _activeItem = next.first;
-      _activeProgress = 0;
     }
   }
 
@@ -152,49 +79,29 @@ class VideoQueueUploadProvider extends ChangeNotifier {
       _checkNextActive();
       notifyListeners();
 
-      if (!_isBackgroundRunning) {
-        await _startBackground();
-      }
-
       ToastService.showSuccess('Added to upload queue');
     } catch (e) {
       ToastService.showError('Failed to add video to queue');
     }
   }
 
-  Future<void> _startBackground() async {
-    try {
-      final granted = await UploadNotificationService.requestNotificationPermission();
-      if (!granted) {
-        final shouldRetry = await AppAlertDialog.show(
-          context: App.navigatorKey.currentContext!,
-          title: 'Notification Permission Required',
-          content: 'Background uploads need notification permission to show progress and keep the upload alive when the app is in the background.',
-          confirmText: 'Grant',
-          cancelText: 'Not Now',
-        );
-        if (shouldRetry != true) return;
-        final granted2 = await UploadNotificationService.requestNotificationPermission();
-        if (!granted2) return;
-      }
-      _isBackgroundRunning = true;
-      _isPaused = false;
-      await BackgroundUploadService.startQueue(token: AuthController.accessToken);
-      notifyListeners();
-    } catch (e) {
-      _isBackgroundRunning = false;
+  void _checkNextActive() {
+    if (_activeItem != null) return;
+    final next = _queue.where((item) => item.status == 'pending').toList();
+    if (next.isNotEmpty) {
+      _activeItem = next.first;
+      _activeProgress = 0;
     }
   }
 
   Future<void> pauseQueue() async {
-    await BackgroundUploadService.pauseQueue();
     _isPaused = true;
     notifyListeners();
     ToastService.showInfo('Upload queue paused');
   }
 
   Future<void> resumeQueue() async {
-    await BackgroundUploadService.resumeQueue(token: AuthController.accessToken);
+    await BackgroundUploadService.startNativeProcessing();
     _isPaused = false;
     _isBackgroundRunning = true;
     notifyListeners();
@@ -202,7 +109,6 @@ class VideoQueueUploadProvider extends ChangeNotifier {
   }
 
   Future<void> cancelTask(int queueId) async {
-    await BackgroundUploadService.cancelItem(queueId);
     await UploadQueueRepository.updateStatus(
       id: queueId,
       status: 'cancelled',
@@ -241,18 +147,8 @@ class VideoQueueUploadProvider extends ChangeNotifier {
         errorMessage: null,
       );
     }
-    if (!_isBackgroundRunning) {
-      await _startBackground();
-    } else if (_isPaused) {
-      await resumeQueue();
-    }
     notifyListeners();
     ToastService.showInfo('Retrying upload');
   }
 
-  @override
-  void dispose() {
-    _progressSub?.cancel();
-    super.dispose();
-  }
 }

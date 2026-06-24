@@ -15,8 +15,9 @@ import 'package:edtech/features/courses/providers/course_list_provider.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 import 'package:edtech/features/courses/providers/video_post_provider.dart';
 import 'package:edtech/features/courses/providers/course_feed_provider.dart';
-import 'package:edtech/features/courses/providers/video_queue_upload_provider.dart';
+import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
 import 'package:edtech/features/hub/providers/change_password_provider.dart';
+import 'package:edtech/features/hub/providers/global_state_provider.dart';
 import 'package:edtech/features/hub/providers/mentor_dashboard_provider.dart';
 import 'package:edtech/global/core/providers/video_player_provider.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
@@ -50,9 +51,10 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CourseUploadProvider()),
         ChangeNotifierProvider(create: (_) => ChangePasswordProvider()),
         ChangeNotifierProvider(create: (_) => VideoPostProvider()),
-        ChangeNotifierProvider(create: (_) => VideoQueueUploadProvider()),
+        ChangeNotifierProvider(create: (_) => UnifiedUploadQueueProvider()),
         ChangeNotifierProvider(create: (_) => CourseFeedProvider()),
         ChangeNotifierProvider(create: (_) => MentorDashboardProvider()),
+        ChangeNotifierProvider(create: (_) => GlobalStateProvider()),
         ChangeNotifierProvider(create: (_) => VideoPlayerProvider()),
       ],
       child: Consumer<ThemeProvider>(

@@ -8,15 +8,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:edtech/app/setup_network_caller.dart';
 import 'package:edtech/app/urls.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
+import 'package:edtech/global/core/services/native_upload_bridge.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/services/upload_notification_service.dart';
+import 'package:edtech/global/core/services/upload_path_storage.dart';
 import 'package:edtech/global/core/services/video_metadata_service.dart';
 
 class _StreamedProgressRequest extends http.BaseRequest {
   final Stream<List<int>> _stream;
-
   _StreamedProgressRequest(super.method, super.url, this._stream);
-
   @override
   http.ByteStream finalize() {
     super.finalize();
@@ -56,15 +56,13 @@ class VideoPostProvider extends ChangeNotifier {
   XFile? _videoFile;
   XFile? get videoFile => _videoFile;
 
-  int? _currentNotifId;
-  http.Client? _activeClient;
   bool _isPicking = false;
   bool get isPicking => _isPicking;
 
-  String get buttonText {
+  String get stepMessage {
     switch (_step) {
       case VideoUploadStep.gettingUrl:
-        return 'Processing...';
+        return 'Getting upload URL...';
       case VideoUploadStep.uploading:
         final pct = (_uploadProgress * 100).toInt();
         return pct > 0 ? 'Uploading $pct%' : 'Uploading...';
@@ -77,6 +75,8 @@ class VideoPostProvider extends ChangeNotifier {
         return 'Upload Video';
     }
   }
+
+  String get buttonText => stepMessage;
 
   Future<XFile?> pickVideo() async {
     if (_isPicking) return null;
@@ -99,35 +99,35 @@ class VideoPostProvider extends ChangeNotifier {
   }
 
   void reset() {
-    _activeClient?.close();
-    _activeClient = null;
     _step = VideoUploadStep.idle;
     _errorMessage = null;
     _videoFile = null;
     _uploadProgress = 0.0;
-    if (_currentNotifId != null) {
-      UploadNotificationService.cancel(notificationId: _currentNotifId);
-    }
-    _currentNotifId = null;
     notifyListeners();
   }
 
   Future<bool> uploadVideoPost({
     required String title,
   }) async {
-    _currentNotifId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final notifId = _currentNotifId!;
     _step = VideoUploadStep.gettingUrl;
     _errorMessage = null;
     notifyListeners();
+    ToastService.showInfo('Getting upload URL...');
+
+    await UploadPathStorage.savePath(
+      filePath: _videoFile!.path,
+      uploadType: 'video_post',
+      title: title,
+    );
+
+    final notifId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await UploadNotificationService.requestNotificationPermission();
+    await UploadNotificationService.startService();
 
     try {
       final videoFile = _videoFile!;
       final videoName = videoFile.name;
       final videoContentType = _inferVideoContentType(videoName);
-
-      await UploadNotificationService.requestNotificationPermission();
-      await UploadNotificationService.startService();
 
       final urlsResponse = await getNetworkCaller().postRequest(
         url: Urls.videoPostAssetsUploadUrl,
@@ -140,13 +140,7 @@ class VideoPostProvider extends ChangeNotifier {
       if (!urlsResponse.isSuccess) {
         _step = VideoUploadStep.error;
         _errorMessage = urlsResponse.errorMessage;
-        AppLogger.e('VideoPost: upload-urls failed — ${urlsResponse.responseCode}, $_errorMessage');
         ToastService.showError('Failed to get upload URL');
-        await UploadNotificationService.showError(
-          notificationId: notifId,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
         notifyListeners();
         return false;
       }
@@ -157,13 +151,8 @@ class VideoPostProvider extends ChangeNotifier {
 
       if (data is! Map<String, dynamic>) {
         _step = VideoUploadStep.error;
-        _errorMessage = 'Invalid response from server';
-        ToastService.showError('Failed to get upload URL');
-        await UploadNotificationService.showError(
-          notificationId: notifId,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
+        _errorMessage = 'Invalid response';
+        ToastService.showError('Invalid server response');
         notifyListeners();
         return false;
       }
@@ -173,28 +162,81 @@ class VideoPostProvider extends ChangeNotifier {
 
       if (uploadUrl == null || fileUrl == null) {
         _step = VideoUploadStep.error;
-        _errorMessage = 'Invalid upload info from server';
-        ToastService.showError('Failed to get upload URL');
-        await UploadNotificationService.showError(
-          notificationId: notifId,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
+        ToastService.showError('Invalid upload URL from server');
         notifyListeners();
         return false;
       }
 
+      await NativeUploadBridge.startNativeUpload(
+        filePath: videoFile.path,
+        uploadUrl: uploadUrl,
+        title: title,
+        contentType: videoContentType,
+        uploadType: 'video_post',
+      );
+
       _step = VideoUploadStep.uploading;
+      _uploadProgress = 0.0;
       notifyListeners();
+      ToastService.showInfo('Uploading video...');
 
-      final results = await Future.wait([
-        _uploadToS3(uploadUrl, videoFile, videoContentType),
-        _getVideoInfo(videoFile),
-      ]);
+      final total = await videoFile.length();
+      final stream = videoFile.openRead().cast<List<int>>();
 
-      final info = results[1] as Map<String, int>;
-      final fileSize = info['fileSize'] ?? 0;
-      final duration = info['duration'] ?? 0;
+      int sent = 0;
+      int lastPct = -1;
+
+      final progressStream = stream.transform(
+        StreamTransformer<List<int>, List<int>>.fromHandlers(
+          handleData: (chunk, sink) {
+            sent += chunk.length;
+            final pct = total > 0 ? (sent * 100 ~/ total) : 0;
+            if (pct != lastPct) {
+              lastPct = pct;
+              _uploadProgress = sent / total;
+              if (pct % 10 == 0 && pct > 0) {
+                ToastService.showInfo('Uploading $pct%');
+              }
+              notifyListeners();
+              UploadNotificationService.showProgress(
+                notificationId: notifId,
+                progress: sent,
+                total: total,
+                title: title,
+              );
+            }
+            sink.add(chunk);
+          },
+        ),
+      );
+
+      final request = _StreamedProgressRequest('PUT', Uri.parse(uploadUrl), progressStream);
+      request.headers['Content-Type'] = videoContentType;
+      request.contentLength = total;
+
+      final client = http.Client();
+      try {
+        final response = await client.send(request).timeout(const Duration(hours: 6));
+        if (response.statusCode != 200) {
+          throw HttpException('Upload failed: ${response.statusCode}');
+        }
+      } finally {
+        client.close();
+      }
+
+      _uploadProgress = 1.0;
+      notifyListeners();
+      ToastService.showSuccess('Video uploaded');
+
+      _step = VideoUploadStep.creatingPost;
+      notifyListeners();
+      ToastService.showInfo('Creating post...');
+
+      final metadata = await VideoMetadataService.getVideoInfo(videoFile.path);
+      final fileSize = metadata.fileSize > 0
+          ? metadata.fileSize
+          : await videoFile.length();
+      final duration = metadata.duration > 0 ? metadata.duration : 1;
 
       final postResponse = await getNetworkCaller().postRequest(
         url: Urls.videoPostUrl,
@@ -210,136 +252,42 @@ class VideoPostProvider extends ChangeNotifier {
         _step = VideoUploadStep.error;
         _errorMessage = postResponse.errorMessage;
         ToastService.showError(postResponse.errorMessage ?? 'Failed to create post');
-        await UploadNotificationService.showError(
-          notificationId: notifId,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
         notifyListeners();
         return false;
       }
 
+      await NativeUploadBridge.clearState();
       _step = VideoUploadStep.done;
-      ToastService.showSuccess('Video post created successfully');
+      notifyListeners();
+      ToastService.showSuccess('Video post created!');
       await UploadNotificationService.showSuccess(
         notificationId: notifId,
-        title: 'Upload Complete',
+        title: title,
+        body: 'Video uploaded successfully',
       );
       await UploadNotificationService.stopService();
-      notifyListeners();
+
+      await UploadPathStorage.clearAll();
+
       return true;
     } catch (e) {
       _step = VideoUploadStep.error;
       _errorMessage = e.toString();
-      AppLogger.e('VideoPost: unexpected error — $_errorMessage');
-      ToastService.showError('Something went wrong. Please try again.');
-      await UploadNotificationService.showError(
-          notificationId: notifId,
-          title: 'Upload Failed',
-        );
-      await UploadNotificationService.stopService();
+      AppLogger.e('VideoPost: error — $_errorMessage');
+      ToastService.showError('Upload failed. Will retry from queue.');
       notifyListeners();
       return false;
     }
   }
 
-  Future<void> _uploadToS3(String url, XFile file, String contentType) async {
-    _uploadProgress = 0.0;
-    notifyListeners();
-
-    final total = await file.length();
-    final stream = file.openRead().cast<List<int>>();
-
-    int sent = 0;
-    int lastPct = -1;
-    DateTime lastUiUpdate = DateTime.now();
-
-    final progressStream = stream.transform(
-      StreamTransformer<List<int>, List<int>>.fromHandlers(
-        handleData: (chunk, sink) {
-          sent += chunk.length;
-          final pct = total > 0 ? (sent * 100 ~/ total) : 0;
-            if (pct != lastPct) {
-            lastPct = pct;
-            _uploadProgress = sent / total;
-            final now = DateTime.now();
-            if (now.difference(lastUiUpdate) >= const Duration(milliseconds: 200)) {
-              lastUiUpdate = now;
-              notifyListeners();
-            }
-            if (_currentNotifId != null) {
-              UploadNotificationService.showProgress(
-                notificationId: _currentNotifId!,
-                progress: sent,
-                total: total,
-                title: 'Uploading Video',
-                fileName: file.name,
-              );
-            }
-          }
-          sink.add(chunk);
-        },
-      ),
-    );
-
-    final request = _StreamedProgressRequest(
-      'PUT',
-      Uri.parse(url),
-      progressStream,
-    );
-    request.headers['Content-Type'] = contentType;
-    request.contentLength = total;
-
-    final client = http.Client();
-    _activeClient = client;
-
-    try {
-      final response = await client.send(request).timeout(const Duration(hours: 6));
-      _uploadProgress = 1.0;
-      notifyListeners();
-      if (response.statusCode != 200) {
-        throw HttpException(
-          'Upload failed with status ${response.statusCode}',
-          uri: Uri.parse(url),
-        );
-      }
-    } on TimeoutException {
-      throw HttpException(
-        'Upload timed out. Check your connection and try again.',
-        uri: Uri.parse(url),
-      );
-    } finally {
-      _uploadProgress = 0.0;
-      notifyListeners();
-      if (_activeClient == client) _activeClient = null;
-      client.close();
-    }
-  }
-
-  Future<Map<String, int>> _getVideoInfo(XFile file) async {
-    final metadata = await VideoMetadataService.getVideoInfo(file.path);
-    if (metadata.duration > 0 && metadata.fileSize > 0) {
-      return {'duration': metadata.duration, 'fileSize': metadata.fileSize};
-    }
-    final fileSize = await file.length();
-    return {'duration': metadata.duration > 0 ? metadata.duration : 1, 'fileSize': fileSize};
-  }
-
   String _inferVideoContentType(String filename) {
     final ext = filename.split('.').last.toLowerCase();
     switch (ext) {
-      case 'mp4':
-        return 'video/mp4';
-      case 'mov':
-      case 'quicktime':
-        return 'video/quicktime';
-      case 'mkv':
-      case 'x-matroska':
-        return 'video/x-matroska';
-      case 'webm':
-        return 'video/webm';
-      default:
-        return 'video/mp4';
+      case 'mp4': return 'video/mp4';
+      case 'mov': case 'quicktime': return 'video/quicktime';
+      case 'mkv': case 'x-matroska': return 'video/x-matroska';
+      case 'webm': return 'video/webm';
+      default: return 'video/mp4';
     }
   }
 }

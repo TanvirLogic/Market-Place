@@ -300,69 +300,116 @@ class _LessonSwipeRowState extends State<_LessonSwipeRow> {
                   borderRadius: borderRadius,
                   border: Border.all(color: const Color(0xFFEFEFF0)),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: widget.isDark ? cs.surfaceContainerLow : const Color(0xFFEAEBFE),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: SvgPicture.asset(
-                          lesson.type == LessonType.video
-                              ? Images.learnVideo
-                              : Images.resource,
-                          width: 16,
-                          height: 16,
-                          colorFilter: ColorFilter.mode(cs.onSurface, BlendMode.srcIn),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    if (widget.isEditing) ...[
-                      GestureDetector(
-                        onTap: () => widget.onShowRenameDialog(
-                          lesson.title,
-                          (newName) => widget.onRenameLesson(lessonIndex, newName),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: SvgPicture.asset(
-                            Images.editProfile,
-                            width: 14,
-                            height: 14,
-                            colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: widget.isDark ? cs.surfaceContainerLow : const Color(0xFFEAEBFE),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: SvgPicture.asset(
+                              lesson.type == LessonType.video
+                                  ? Images.learnVideo
+                                  : Images.resource,
+                              width: 16,
+                              height: 16,
+                              colorFilter: ColorFilter.mode(cs.onSurface, BlendMode.srcIn),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: widget.isEditing
-                            ? () => widget.onShowRenameDialog(
-                                  lesson.title,
-                                  (newName) => widget.onRenameLesson(lessonIndex, newName),
-                                )
-                            : itemTap,
-                        child: Text(
-                          lesson.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface),
+                        const SizedBox(width: 12),
+                        if (widget.isEditing) ...[
+                          GestureDetector(
+                            onTap: () => widget.onShowRenameDialog(
+                              lesson.title,
+                              (newName) => widget.onRenameLesson(lessonIndex, newName),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: SvgPicture.asset(
+                                Images.editProfile,
+                                width: 14,
+                                height: 14,
+                                colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
+                              ),
+                            ),
+                          ),
+                        ],
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: widget.isEditing
+                                ? () => widget.onShowRenameDialog(
+                                      lesson.title,
+                                      (newName) => widget.onRenameLesson(lessonIndex, newName),
+                                    )
+                                : itemTap,
+                            child: Text(
+                              lesson.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface),
+                            ),
+                          ),
+                        ),
+                        if (lesson.type == LessonType.video && lesson.uploadStatus == 'completed') ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            lesson.duration,
+                            style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
+                          ),
+                        ],
+                        if (lesson.uploadStatus == 'failed')
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(Icons.error_outline, size: 16, color: Colors.red.shade400),
+                          ),
+                        const SizedBox(width: 8),
+                        Icon(Icons.chevron_right, size: 18, color: cs.onSurface),
+                      ],
+                    ),
+                    if (lesson.uploadStatus == 'pending' || lesson.uploadStatus == 'uploading')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (lesson.uploadStatus == 'uploading')
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: lesson.uploadProgress,
+                                  minHeight: 4,
+                                  backgroundColor: cs.outlineVariant,
+                                ),
+                              )
+                            else
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  minHeight: 4,
+                                  backgroundColor: cs.outlineVariant,
+                                ),
+                              ),
+                            const SizedBox(height: 4),
+                            Text(
+                              lesson.uploadStatus == 'pending'
+                                  ? 'Waiting to upload...'
+                                  : 'Uploading ${(lesson.uploadProgress * 100).toInt()}%',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    if (lesson.type == LessonType.video) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        lesson.duration,
-                        style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
-                      ),
-                    ],
-                    const SizedBox(width: 8),
-                    Icon(Icons.chevron_right, size: 18, color: cs.onSurface),
                   ],
                 ),
               ),

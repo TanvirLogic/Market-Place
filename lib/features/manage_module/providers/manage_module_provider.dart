@@ -1,39 +1,29 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+
 import 'package:edtech/app/urls.dart';
 import 'package:edtech/app/setup_network_caller.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
+import 'package:edtech/global/core/services/native_upload_bridge.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
-import 'package:edtech/global/core/services/upload_notification_service.dart';
-import 'package:edtech/global/core/services/video_metadata_service.dart';
-
-class _StreamedProgressRequest extends http.BaseRequest {
-  final Stream<List<int>> _stream;
-
-  _StreamedProgressRequest(super.method, super.url, this._stream);
-
-  @override
-  http.ByteStream finalize() {
-    super.finalize();
-    return http.ByteStream(_stream);
-  }
-}
 
 class ManageModuleProvider extends ChangeNotifier {
   final int courseId;
   int _nextModuleId = 1;
   int _nextLessonId = 1;
   bool _isLoading = true;
-  double _uploadProgress = 0.0;
 
   final List<CourseModule> _modules = [];
   final Map<int, String> _videoUrlCache = {};
+  final Map<int, int> _queueItemToLesson = {};
+  Timer? _progressTimer;
   bool _hasUnsavedChanges = false;
-  int? _currentNotifId;
 
   String _courseTitle = '';
   String _courseShortDescription = '';
@@ -54,7 +44,12 @@ class ManageModuleProvider extends ChangeNotifier {
   List<CourseModule> get modules => _modules;
   bool get hasUnsavedChanges => _hasUnsavedChanges;
   bool get isLoading => _isLoading;
-  double get uploadProgress => _uploadProgress;
+
+  @override
+  void dispose() {
+    _progressTimer?.cancel();
+    super.dispose();
+  }
 
   String get courseTitle => _courseTitle;
   String get courseShortDescription => _courseShortDescription;
@@ -361,112 +356,99 @@ class ManageModuleProvider extends ChangeNotifier {
     int moduleIndex,
     String title,
     XFile videoFile, {
-    void Function(double)? onProgress,
+    UnifiedUploadQueueProvider? queueProvider,
   }) async {
-    _currentNotifId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final module = _modules[moduleIndex];
-    final videoName = videoFile.name;
-    final videoContentType = _inferVideoContentType(videoName);
+    final lessonId = _nextLessonId++;
 
-    await UploadNotificationService.requestNotificationPermission();
-    await UploadNotificationService.startService();
-
-    final uploadUrlResponse = await getNetworkCaller().postRequest(
-      url: Urls.courseModuleUploadUrl,
-      body: {
-        'moduleID': module.id,
-        'videoFilename': videoName,
-        'videoContentType': videoContentType,
-      },
+    final lesson = Lesson(
+      id: lessonId,
+      title: title,
+      duration: '0:00',
+      type: LessonType.video,
+      uploadProgress: 0.0,
+      uploadStatus: 'pending',
     );
-    if (!uploadUrlResponse.isSuccess) {
-      ToastService.showError(uploadUrlResponse.errorMessage ?? 'Failed to get upload URL');
-      await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-      await UploadNotificationService.stopService();
-      return false;
-    }
-
-    final raw = uploadUrlResponse.responseData;
-    final wrapper = raw is Map ? raw['data'] : null;
-    final data = wrapper is Map ? (wrapper['data'] ?? wrapper) : wrapper;
-    if (data is! Map) {
-      ToastService.showError('Invalid upload URL response');
-      await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-      await UploadNotificationService.stopService();
-      return false;
-    }
-    final uploadUrl = data['uploadUrl'] as String?;
-    final fileUrl = data['fileUrl'] as String?;
-    if (uploadUrl == null || fileUrl == null) {
-      ToastService.showError('Invalid upload URL response');
-      await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-      await UploadNotificationService.stopService();
-      return false;
-    }
-
-    final results = await Future.wait([
-      _uploadToS3(uploadUrl, videoFile, videoContentType, onProgress: onProgress),
-      _getVideoInfo(videoFile),
-    ]);
-
-    if (!(results[0] as bool)) return false;
-
-    final info = results[1] as Map<String, int>;
-    final fileSize = info['fileSize']!;
-    final duration = info['duration']!;
-
-    final lessonResponse = await getNetworkCaller().postRequest(
-      url: Urls.courseModuleLessonUrl,
-      body: {
-        'title': title,
-        'moduleId': module.id,
-        'videoUrl': fileUrl,
-        'duration': duration,
-        'fileSize': fileSize,
-      },
-    );
-    if (!lessonResponse.isSuccess) {
-      ToastService.showError(lessonResponse.errorMessage ?? 'Failed to create lesson');
-      await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-      await UploadNotificationService.stopService();
-      return false;
-    }
-
-    final lessonRaw = lessonResponse.responseData;
-    final lessonData = (lessonRaw is Map) ? (lessonRaw['data'] is Map ? lessonRaw['data']['data'] ?? lessonRaw['data'] : lessonRaw['data']) : null;
-    final lessonId = (lessonData is Map) ? lessonData['id'] as int? : null;
-
-    final newId = lessonId ?? _nextLessonId++;
-    _videoUrlCache[newId] = fileUrl;
-    module.lessons.add(
-      Lesson(
-        id: newId,
-        title: title,
-        duration: duration > 0 ? _formatDuration(duration) : '0:00',
-        type: LessonType.video,
-        videoUrl: fileUrl,
-      ),
-    );
+    module.lessons.add(lesson);
+    _hasUnsavedChanges = true;
     notifyListeners();
-    ToastService.showSuccess('Video lesson added successfully');
-    await UploadNotificationService.showSuccess(
-      notificationId: _currentNotifId!,
-      title: 'Upload Complete',
-    );
-    await UploadNotificationService.stopService();
-    return true;
+
+    try {
+      final queueId = await queueProvider!.addModuleLessonToQueue(
+        videoPath: videoFile.path,
+        lessonTitle: title,
+        moduleId: module.id,
+        courseId: courseId,
+      );
+      _queueItemToLesson[queueId] = lessonId;
+      _startProgressPolling();
+      return true;
+    } catch (e) {
+      AppLogger.e('addVideoLesson queue error: $e');
+      lesson.uploadStatus = 'failed';
+      notifyListeners();
+      ToastService.showError('Failed to queue video lesson');
+      return false;
+    }
+  }
+
+  void _startProgressPolling() {
+    _progressTimer?.cancel();
+    _progressTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final data = await NativeUploadBridge.getQueueItems();
+        final items = data['items'] as List<dynamic>? ?? [];
+        bool updated = false;
+
+        for (final raw in items) {
+          final item = raw as Map<String, dynamic>;
+          final queueId = item['id'] as int;
+          final lessonId = _queueItemToLesson[queueId];
+          if (lessonId == null) continue;
+
+          final lesson = _findLessonById(lessonId);
+          if (lesson == null) {
+            _queueItemToLesson.remove(queueId);
+            continue;
+          }
+
+          final status = item['status'] as String? ?? 'pending';
+          final progress = ((item['progress'] as num?)?.toDouble() ?? 0.0) / 100.0;
+
+          if (lesson.uploadStatus != status || lesson.uploadProgress != progress) {
+            lesson.uploadStatus = status;
+            lesson.uploadProgress = progress;
+            updated = true;
+          }
+
+          if (status == 'completed') {
+            final fileUrl = item['fileUrl'] as String?;
+            if (fileUrl != null && fileUrl.isNotEmpty) {
+              lesson.videoUrl ??= fileUrl;
+            }
+            _queueItemToLesson.remove(queueId);
+          } else if (status == 'failed') {
+            _queueItemToLesson.remove(queueId);
+          }
+        }
+
+        if (updated) notifyListeners();
+
+        if (_queueItemToLesson.isEmpty) {
+          _progressTimer?.cancel();
+          _progressTimer = null;
+        }
+      } catch (_) {}
+    });
+  }
+
+  Lesson? _findLessonById(int lessonId) {
+    for (final module in _modules) {
+      for (final lesson in module.lessons) {
+        if (lesson.id == lessonId) return lesson;
+      }
+    }
+    return null;
   }
 
   Future<bool> addResourceLesson(int moduleIndex, String title, XFile resourceFile) async {
@@ -475,64 +457,94 @@ class ManageModuleProvider extends ChangeNotifier {
     final filename = resourceFile.name;
     final contentType = _inferResourceContentType(filename);
 
-    final uploadUrlResponse = await getNetworkCaller().postRequest(
-      url: Urls.courseModuleResourceUploadUrl,
-      body: {
-        'filename': filename,
-        'contentType': contentType,
-      },
-    );
-    if (!uploadUrlResponse.isSuccess) {
-      ToastService.showError(uploadUrlResponse.errorMessage ?? 'Failed to get upload URL');
-      return false;
-    }
+    ToastService.showInfo('Getting upload URL...');
 
-    final raw = uploadUrlResponse.responseData;
-    final data = (raw is Map) ? (raw['data'] is Map ? raw['data']['data'] ?? raw['data'] : raw['data']) : null;
-    if (data is! Map) {
-      ToastService.showError('Invalid upload URL response');
-      return false;
-    }
-    final uploadUrl = data['uploadUrl'] as String?;
-    final fileUrl = data['fileUrl'] as String?;
-    if (uploadUrl == null || fileUrl == null) {
-      ToastService.showError('Invalid upload URL response');
-      return false;
-    }
+    try {
+      final uploadUrlResponse = await getNetworkCaller().postRequest(
+        url: Urls.courseModuleResourceUploadUrl,
+        body: {'filename': filename, 'contentType': contentType},
+      );
+      if (!uploadUrlResponse.isSuccess) {
+        ToastService.showError(uploadUrlResponse.errorMessage ?? 'Failed to get upload URL');
+        return false;
+      }
 
-    final uploaded = await _uploadToS3(uploadUrl, resourceFile, contentType);
-    if (!uploaded) return false;
+      final raw = uploadUrlResponse.responseData;
+      final data = (raw is Map) ? (raw['data'] is Map ? raw['data']['data'] ?? raw['data'] : raw['data']) : null;
+      if (data is! Map) {
+        ToastService.showError('Invalid upload URL response');
+        return false;
+      }
+      final uploadUrl = data['uploadUrl'] as String?;
+      final fileUrl = data['fileUrl'] as String?;
+      if (uploadUrl == null || fileUrl == null) {
+        ToastService.showError('Invalid upload URL response');
+        return false;
+      }
 
-    final lessonResponse = await getNetworkCaller().postRequest(
-      url: Urls.courseModuleResourceUrl,
-      body: {
-        'moduleId': module.id,
-        'title': title,
-        'fileUrl': fileUrl,
-        'fileType': contentType,
-        'fileSize': fileSize,
-      },
-    );
-    if (!lessonResponse.isSuccess) {
-      ToastService.showError(lessonResponse.errorMessage ?? 'Failed to create lesson');
-      return false;
-    }
-
-    final lessonRaw = lessonResponse.responseData;
-    final lessonData = (lessonRaw is Map) ? (lessonRaw['data'] is Map ? lessonRaw['data']['data'] ?? lessonRaw['data'] : lessonRaw['data']) : null;
-    final lessonId = (lessonData is Map) ? lessonData['id'] as int? : null;
-
-    module.lessons.add(
-      Lesson(
-        id: lessonId ?? _nextLessonId++,
+      await NativeUploadBridge.startNativeUpload(
+        filePath: resourceFile.path,
+        uploadUrl: uploadUrl,
         title: title,
-        duration: '0:00',
-        type: LessonType.resource,
-      ),
-    );
-    notifyListeners();
-    ToastService.showSuccess('Resource lesson added successfully');
-    return true;
+        contentType: contentType,
+        uploadType: 'resource',
+      );
+
+      ToastService.showInfo('Uploading resource...');
+      final bytes = await resourceFile.readAsBytes();
+      final response = await http.put(
+        Uri.parse(uploadUrl),
+        headers: {'Content-Type': contentType},
+        body: bytes,
+      ).timeout(const Duration(minutes: 5));
+      if (response.statusCode != 200) {
+        throw HttpException('Upload failed: ${response.statusCode}');
+      }
+      ToastService.showSuccess('Resource uploaded');
+
+      ToastService.showInfo('Creating lesson...');
+      final lessonResponse = await getNetworkCaller().postRequest(
+        url: Urls.courseModuleResourceUrl,
+        body: {
+          'moduleId': module.id,
+          'title': title,
+          'fileUrl': fileUrl,
+          'fileType': contentType,
+          'fileSize': fileSize,
+        },
+      );
+      if (!lessonResponse.isSuccess) {
+        ToastService.showError(lessonResponse.errorMessage ?? 'Failed to create lesson');
+        return false;
+      }
+
+      final lessonRaw = lessonResponse.responseData;
+      final lessonData = (lessonRaw is Map) ? (lessonRaw['data'] is Map ? lessonRaw['data']['data'] ?? lessonRaw['data'] : lessonRaw['data']) : null;
+      final lessonId = (lessonData is Map) ? lessonData['id'] as int? : null;
+
+      module.lessons.add(
+        Lesson(
+          id: lessonId ?? _nextLessonId++,
+          title: title,
+          duration: '0:00',
+          type: LessonType.resource,
+        ),
+      );
+      await NativeUploadBridge.clearState();
+      notifyListeners();
+      ToastService.showSuccess('Resource lesson added!');
+      return true;
+    } catch (e) {
+      AppLogger.e('addResourceLesson error: $e');
+      ToastService.showError('Upload failed');
+      return false;
+    }
+  }
+
+  String _formatDuration(int seconds) {
+    final min = seconds ~/ 60;
+    final sec = seconds % 60;
+    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
   String _inferResourceContentType(String filename) {
@@ -549,122 +561,4 @@ class ManageModuleProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> _uploadToS3(
-    String url,
-    XFile file,
-    String contentType, {
-    void Function(double)? onProgress,
-  }) async {
-    _uploadProgress = 0.0;
-    onProgress?.call(0.0);
-    notifyListeners();
-
-    final total = await file.length();
-    final stream = file.openRead().cast<List<int>>();
-
-    int sent = 0;
-    int lastPct = -1;
-    DateTime lastUiUpdate = DateTime.now();
-
-    final progressStream = stream.transform(
-      StreamTransformer<List<int>, List<int>>.fromHandlers(
-        handleData: (chunk, sink) {
-          sent += chunk.length;
-          final pct = total > 0 ? (sent * 100 ~/ total) : 0;
-          if (pct != lastPct) {
-            lastPct = pct;
-            _uploadProgress = sent / total;
-            onProgress?.call(sent / total);
-            final now = DateTime.now();
-            if (now.difference(lastUiUpdate) >= const Duration(milliseconds: 200)) {
-              lastUiUpdate = now;
-              notifyListeners();
-            }
-            UploadNotificationService.showProgress(
-              notificationId: _currentNotifId!,
-              progress: sent,
-              total: total,
-              title: 'Uploading Video Lesson',
-              fileName: file.name,
-            );
-          }
-          sink.add(chunk);
-        },
-      ),
-    );
-
-    final request = _StreamedProgressRequest(
-      'PUT',
-      Uri.parse(url),
-      progressStream,
-    );
-    request.headers['Content-Type'] = contentType;
-    request.contentLength = total;
-
-    final client = http.Client();
-
-    try {
-      final response = await client.send(request).timeout(const Duration(hours: 6));
-      if (response.statusCode != 200) {
-        AppLogger.e('S3 upload failed: status=${response.statusCode}');
-        ToastService.showError('Upload failed with status ${response.statusCode}');
-        await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
-        return false;
-      }
-      return true;
-    } on TimeoutException {
-      AppLogger.e('S3 upload timed out');
-      ToastService.showError('Upload timed out. Check your connection and try again.');
-      await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-      await UploadNotificationService.stopService();
-      return false;
-    } catch (e) {
-      AppLogger.e('S3 upload failed: $e');
-      ToastService.showError('File upload failed');
-      await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-      await UploadNotificationService.stopService();
-      return false;
-    } finally {
-      client.close();
-    }
-  }
-
-  Future<Map<String, int>> _getVideoInfo(XFile file) async {
-    final metadata = await VideoMetadataService.getVideoInfo(file.path);
-    if (metadata.duration > 0 && metadata.fileSize > 0) {
-      return {'duration': metadata.duration, 'fileSize': metadata.fileSize};
-    }
-    final fileSize = await file.length();
-    return {
-      'duration': metadata.duration > 0 ? metadata.duration : 1,
-      'fileSize': fileSize,
-    };
-  }
-
-  String _formatDuration(int seconds) {
-    final min = seconds ~/ 60;
-    final sec = seconds % 60;
-    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-  }
-
-  String _inferVideoContentType(String filename) {
-    final ext = filename.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'mp4': return 'video/mp4';
-      case 'mov': case 'quicktime': return 'video/quicktime';
-      case 'mkv': case 'x-matroska': return 'video/x-matroska';
-      case 'webm': return 'video/webm';
-      default: return 'video/mp4';
-    }
-  }
 }

@@ -11,14 +11,13 @@ import 'package:edtech/features/home/presentation/pages/main_nav_shell.dart';
 import 'package:edtech/features/course_details/presentation/screens/course_details_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/payment_success_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/upload_course_screen.dart';
-import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 import 'package:edtech/features/courses/presentation/screens/upload_video_screen.dart';
-import 'package:provider/provider.dart';
 import 'package:edtech/features/manage_module/presentation/screens/manage_module_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/password_and_security_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/payments_and_revenue_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/ads_create_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/ads_manager_screen.dart';
+import 'package:edtech/features/hub/presentation/screens/help_center_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/mentor_dashboard_screen.dart';
 import 'package:edtech/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:edtech/features/profile/avatar/presentation/screens/full_screen_image_viewer_screen.dart';
@@ -53,6 +52,7 @@ class AppRoutes {
   static const String adsManager = '/ads-manager';
   static const String adsCreate = '/ads-create';
   static const String roleSelection = '/role-selection';
+  static const String helpCenter = '/help-center';
 
   static Future<void> navigateToProfile(BuildContext context, String role) {
     final route = role == 'MENTOR' ? mentorProfilePage : profilePage;
@@ -93,10 +93,7 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const UploadVideoScreen());
       case uploadCoursePage:
         return MaterialPageRoute(
-          builder: (_) => ChangeNotifierProvider(
-            create: (_) => CourseUploadProvider(),
-            child: const UploadCourseScreen(),
-          ),
+          builder: (_) => const UploadCourseScreen(),
         );
       case courseDetails:
         final args = settings.arguments as Map?;
@@ -133,6 +130,13 @@ class AppRoutes {
         final idToken = args?['idToken'] as String? ?? '';
         return MaterialPageRoute(
           builder: (_) => RoleSelectionScreen(idToken: idToken),
+        );
+      case helpCenter:
+        return MaterialPageRoute(
+          builder: (_) => const HelpCenterScreen(
+            directChatLink:
+                'https://tawk.to/chat/6a39527486fba91d4a3bdef0/1jrnuk622',
+          ),
         );
       case fullScreenImage:
         final args = settings.arguments as Map<String, dynamic>;

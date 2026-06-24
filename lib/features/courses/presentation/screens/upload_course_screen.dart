@@ -1,13 +1,14 @@
-import 'dart:async';
+import 'dart:io';
 
 import 'package:edtech/app/app_colors.dart';
-import 'package:edtech/features/courses/providers/course_upload_provider.dart';
+import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../widgets/upload_zone.dart';
 
@@ -26,23 +27,20 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
   final _reqCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  Timer? _errorTimer;
+  final _picker = ImagePicker();
 
   String _selectedLanguage = 'English';
   String _selectedLevel = 'Beginner';
   String _courseType = 'FREE';
 
-  void _scheduleErrorClear() {
-    _errorTimer?.cancel();
-    _errorTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      _formKey.currentState?.reset();
-    });
-  }
+  XFile? _thumbnailFile;
+  XFile? _videoFile;
+  bool _isPickingThumbnail = false;
+  bool _isPickingVideo = false;
+  bool _isUploading = false;
 
   @override
   void dispose() {
-    _errorTimer?.cancel();
     _titleCtrl.dispose();
     _shortDescCtrl.dispose();
     _descCtrl.dispose();
@@ -51,15 +49,42 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
     super.dispose();
   }
 
+  Future<void> _pickThumbnail() async {
+    if (_isPickingThumbnail) return;
+    setState(() => _isPickingThumbnail = true);
+    try {
+      final file = await _picker.pickImage(source: ImageSource.gallery);
+      if (file != null) setState(() => _thumbnailFile = file);
+    } catch (_) {
+      ToastService.showError('Failed to open gallery');
+    } finally {
+      setState(() => _isPickingThumbnail = false);
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    if (_isPickingVideo) return;
+    setState(() => _isPickingVideo = true);
+    try {
+      final file = await _picker.pickVideo(source: ImageSource.gallery);
+      if (file != null) setState(() => _videoFile = file);
+    } catch (_) {
+      ToastService.showError('Failed to open gallery');
+    } finally {
+      setState(() => _isPickingVideo = false);
+    }
+  }
+
   Future<void> _handleSubmit() async {
-    if (!_formKey.currentState!.validate()) {
-      _scheduleErrorClear();
+    if (!_formKey.currentState!.validate()) return;
+    if (_thumbnailFile == null) {
+      ToastService.showError('Please select a thumbnail image');
       return;
     }
 
-    final provider = context.read<CourseUploadProvider>();
-    if (provider.thumbnailFile == null) {
-      ToastService.showError('Please select a thumbnail image');
+    final thumbFile = File(_thumbnailFile!.path);
+    if (!await thumbFile.exists()) {
+      ToastService.showError('Selected thumbnail no longer available');
       return;
     }
 
@@ -67,21 +92,30 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
         ? double.tryParse(_priceCtrl.text.trim()) ?? 0
         : 0.0;
 
-    if (mounted) {
-      Navigator.of(context).pop();
-      ToastService.showSuccess('Your Course is being uploaded');
-    }
+    if (!mounted) return;
+    setState(() => _isUploading = true);
 
-    provider.uploadCourse(
-      title: _titleCtrl.text,
-      description: _descCtrl.text,
-      shortDescription: _shortDescCtrl.text,
-      requirements: _reqCtrl.text,
+    final provider = context.read<UnifiedUploadQueueProvider>();
+    final id = await provider.addCourseToQueue(
+      thumbnailPath: _thumbnailFile!.path,
+      videoPath: _videoFile?.path,
+      title: _titleCtrl.text.trim(),
+      shortDescription: _shortDescCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+      requirements: _reqCtrl.text.trim(),
       language: _selectedLanguage,
       level: _selectedLevel,
       type: _courseType,
       price: price,
     );
+
+    if (!mounted) return;
+    setState(() => _isUploading = false);
+
+    if (id > 0) {
+      ToastService.showSuccess('Course queued for upload');
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -110,19 +144,20 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
             Expanded(
               child: GestureDetector(
                 onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSizes.horizontalPadding,
-                      vertical: 16,
-                    ),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.horizontalPadding,
+                    vertical: 16,
+                  ),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _buildLabel('Title', cs),
                         const SizedBox(height: 8),
                         TextFormField(
+                          maxLength: 50,
                           controller: _titleCtrl,
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) =>
@@ -133,7 +168,8 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                             'Enter your course title',
                           ),
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) return 'Title is required';
+                            if (value == null || value.trim().isEmpty)
+                              return 'Title is required';
                             return null;
                           },
                         ),
@@ -141,6 +177,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                         _buildLabel('Short Description', cs),
                         const SizedBox(height: 8),
                         TextFormField(
+                          maxLength: 100,
                           controller: _shortDescCtrl,
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) =>
@@ -151,7 +188,8 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                             'Enter short description',
                           ),
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) return 'Short description is required';
+                            if (value == null || value.trim().isEmpty)
+                              return 'Short description is required';
                             return null;
                           },
                         ),
@@ -171,7 +209,8 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                             borderRadius: 16,
                           ),
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) return 'Description is required';
+                            if (value == null || value.trim().isEmpty)
+                              return 'Description is required';
                             return null;
                           },
                         ),
@@ -191,32 +230,27 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                             borderRadius: 16,
                           ),
                         ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Language', cs),
-                      const SizedBox(height: 8),
-                      _buildDropdownField(
-                        cs,
-                        _selectedLanguage,
-                        ['English', 'Bangla', 'Spanish', 'Arabic', 'Hindi'],
-                        (val) => setState(() => _selectedLanguage = val!),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Thumbnail', cs),
-                      const SizedBox(height: 8),
-                      Consumer<CourseUploadProvider>(
-                        builder: (context, provider, _) {
-                          final name = provider.thumbnailFile?.name;
-                          return InkWell(
-                            onTap: provider.isPickingThumbnail
-                                ? null
-                                : () => provider.pickThumbnail(),
-                            borderRadius: BorderRadius.circular(
-                              AppSizes.radiusDef,
-                            ),
-                            child: AnimatedOpacity(
-                              opacity: provider.isPickingThumbnail ? 0.5 : 1.0,
-                              duration: const Duration(milliseconds: 200),
-                              child: Ink(
+                        const SizedBox(height: 16),
+                        _buildLabel('Language', cs),
+                        const SizedBox(height: 8),
+                        _buildDropdownField(
+                          cs,
+                          _selectedLanguage,
+                          ['English', 'Bangla', 'Spanish', 'Arabic', 'Hindi'],
+                          (val) => setState(() => _selectedLanguage = val!),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildLabel('Thumbnail', cs),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: _isPickingThumbnail ? null : _pickThumbnail,
+                          borderRadius: BorderRadius.circular(
+                            AppSizes.radiusDef,
+                          ),
+                          child: AnimatedOpacity(
+                            opacity: _isPickingThumbnail ? 0.5 : 1.0,
+                            duration: const Duration(milliseconds: 200),
+                            child: Ink(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                                 vertical: 14,
@@ -241,9 +275,9 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      name ?? 'Upload thumbnail',
+                                      _thumbnailFile?.name ?? 'Upload thumbnail',
                                       style: TextStyle(
-                                        color: name != null
+                                        color: _thumbnailFile != null
                                             ? cs.onSurface
                                             : cs.onSurface.withValues(
                                                 alpha: 0.5,
@@ -253,9 +287,10 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  if (name != null)
+                                  if (_thumbnailFile != null)
                                     GestureDetector(
-                                      onTap: () => provider.clearThumbnail(),
+                                      onTap: () =>
+                                          setState(() => _thumbnailFile = null),
                                       child: Icon(
                                         Icons.close,
                                         size: 18,
@@ -264,7 +299,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                                     ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    name != null ? 'Change' : 'Choose',
+                                    _thumbnailFile != null ? 'Change' : 'Choose',
                                     style: TextStyle(
                                       color: AppColors.themeColor,
                                       fontWeight: FontWeight.w700,
@@ -272,84 +307,67 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
                                     ),
                                   ),
                                 ],
-                                ),
                               ),
                             ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Intro Video', cs, required: false),
-                      const SizedBox(height: 8),
-                      Consumer<CourseUploadProvider>(
-                        builder: (context, provider, _) {
-                          return UploadZone(
-                            cs: cs,
-                            isDark: isDark,
-                            isPicking: provider.isPickingVideo,
-                            onTap: provider.isPickingVideo
-                                ? null
-                                : () => provider.pickVideo(),
-                            selectedFileName: provider.videoFile?.name,
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Level', cs),
-                      const SizedBox(height: 8),
-                      _buildDropdownField(
-                        cs,
-                        _selectedLevel,
-                        ['Beginner', 'Intermediate', 'Advanced'],
-                        (val) => setState(() => _selectedLevel = val!),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLabel('Type', cs),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(child: _buildRadioTile(cs, 'FREE')),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildRadioTile(cs, 'PAID')),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      if (_courseType == 'PAID') ...[
-                        _buildLabel('Price', cs),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _priceCtrl,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.done,
-                          onFieldSubmitted: (_) =>
-                              FocusManager.instance.primaryFocus?.unfocus(),
-                          style: TextStyle(color: cs.onSurface),
-                          decoration: _inputDecoration(cs, 'Enter price'),
+                          ),
                         ),
                         const SizedBox(height: 16),
+                        _buildLabel('Intro Video', cs, required: false),
+                        const SizedBox(height: 8),
+                        UploadZone(
+                          cs: cs,
+                          isDark: isDark,
+                          isPicking: _isPickingVideo,
+                          onTap: _isPickingVideo ? null : _pickVideo,
+                          selectedFileName: _videoFile?.name,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildLabel('Level', cs),
+                        const SizedBox(height: 8),
+                        _buildDropdownField(
+                          cs,
+                          _selectedLevel,
+                          ['Beginner', 'Intermediate', 'Advanced'],
+                          (val) => setState(() => _selectedLevel = val!),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildLabel('Type', cs),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(child: _buildRadioTile(cs, 'FREE')),
+                            const SizedBox(width: 16),
+                            Expanded(child: _buildRadioTile(cs, 'PAID')),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        if (_courseType == 'PAID') ...[
+                          _buildLabel('Price', cs),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _priceCtrl,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
+                            style: TextStyle(color: cs.onSurface),
+                            decoration: _inputDecoration(cs, 'Enter price'),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        const SizedBox(height: 32),
                       ],
-                      const SizedBox(height: 32),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Consumer<CourseUploadProvider>(
-                builder: (context, provider, _) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      AuthButton(
-                        text: provider.buttonText,
-                        borderRadius: 28,
-                        onPressed: provider.isLoading ? null : _handleSubmit,
-                      ),
-                    ],
-                  );
-                },
+              child: AuthButton(
+                text: _isUploading ? 'Queuing...' : 'Create Course',
+                borderRadius: 28,
+                onPressed: _isUploading ? null : _handleSubmit,
               ),
             ),
           ],

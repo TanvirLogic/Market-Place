@@ -64,7 +64,11 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await context.read<MentorDashboardProvider>().fetchDashboard();
+          },
+          child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSizes.horizontalPadding,
@@ -135,6 +139,7 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

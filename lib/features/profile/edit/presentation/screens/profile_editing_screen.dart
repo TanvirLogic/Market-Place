@@ -11,6 +11,10 @@ import 'package:edtech/features/profile/shared/models/social_link_param.dart';
 import 'package:edtech/features/profile/student/data/entities/user_profile_entity.dart';
 import 'package:edtech/features/profile/student/providers/edit_profile_provider.dart';
 import 'package:edtech/features/profile/student/providers/student_profile_provider.dart';
+import 'package:edtech/features/profile/edit/data/country.dart';
+import 'package:edtech/features/profile/edit/data/country_service.dart';
+import 'package:edtech/features/profile/edit/presentation/widgets/country_picker_field.dart';
+import 'package:edtech/features/profile/edit/presentation/widgets/phone_with_code_field.dart';
 import '../widgets/edit_app_bar.dart';
 import '../widgets/input_field_module.dart';
 import '../widgets/gender_select_module.dart';
@@ -52,7 +56,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _dobController;
   late final TextEditingController _professionController;
   late final TextEditingController _bioController;
-  late final TextEditingController _countryController;
+
+  Country? _selectedCountry;
 
   final List<TextEditingController> _platformControllers = [];
   final List<TextEditingController> _urlControllers = [];
@@ -90,13 +95,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     _nameController = TextEditingController(text: profile?.name ?? '');
     _usernameController = TextEditingController(text: profile?.username ?? '');
-    _phoneController = TextEditingController(text: profile?.phone ?? '');
     _dobController = TextEditingController(
       text: profile?.dob != null ? _formatDate(profile!.dob!) : '',
     );
     _professionController = TextEditingController(text: profile?.profession ?? '');
     _bioController = TextEditingController(text: profile?.bio ?? '');
-    _countryController = TextEditingController(text: profile?.country ?? '');
+    _phoneController = TextEditingController(text: '');
 
     if (profile?.gender != null) {
       _selectedGender = profile!.gender == 1 ? 'Male' : 'Female';
@@ -106,6 +110,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       for (final link in profile.socialLinks) {
         _platformControllers.add(TextEditingController(text: link.platform));
         _urlControllers.add(TextEditingController(text: link.url));
+      }
+    }
+
+    _matchCountryAndPhone(profile);
+  }
+
+  Future<void> _matchCountryAndPhone(UserProfileEntity? profile) async {
+    final countryName = profile?.country ?? '';
+    Country? matchedCountry;
+
+    if (countryName.isNotEmpty) {
+      final countries = await CountryService().fetch();
+      final match = countries.where(
+        (c) => c.name.toLowerCase() == countryName.toLowerCase(),
+      );
+      if (match.isNotEmpty) {
+        matchedCountry = match.first;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _selectedCountry = matchedCountry;
+      });
+
+      final rawPhone = profile?.phone ?? '';
+      if (matchedCountry != null && rawPhone.startsWith(matchedCountry.dialCode)) {
+        _phoneController.text = rawPhone.substring(matchedCountry.dialCode.length);
+      } else {
+        _phoneController.text = rawPhone;
       }
     }
   }
@@ -221,7 +255,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     _countryError = null;
 
-    if (phone.isNotEmpty && !RegExp(r'^\+?\d{10,15}$').hasMatch(phone)) {
+    if (phone.isNotEmpty && !RegExp(r'^\d{6,15}$').hasMatch(phone)) {
       _phoneError = "Enter a valid phone number";
       hasError = true;
     } else {
@@ -280,7 +314,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final dob = _dobController.text.trim();
     final profession = _professionController.text.trim();
     final bio = _bioController.text.trim();
-    final country = _countryController.text.trim();
+    final country = _selectedCountry?.name ?? '';
+    final phoneWithCode = _selectedCountry != null && phone.isNotEmpty
+        ? '${_selectedCountry!.dialCode}$phone'
+        : phone;
     final gender = _selectedGender != null ? (_selectedGender == 'Male' ? 1 : 0) : null;
     final socialLinks = _buildSocialLinks();
 
@@ -289,7 +326,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       success = await context.read<MentorProfileProvider>().updateProfile(
         name: name,
         username: username,
-        phone: phone,
+        phone: phoneWithCode,
         dob: dob.isNotEmpty ? dob : null,
         profession: profession,
         bio: bio,
@@ -301,7 +338,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       await context.read<EditProfileProvider>().updateProfile(
         name: name,
         username: username,
-        phone: phone,
+        phone: phoneWithCode,
         dob: dob.isNotEmpty ? dob : null,
         profession: profession,
         bio: bio,
@@ -317,7 +354,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           editProvider.updatedProfile!.copyWith(
             name: name,
             username: username,
-            phone: phone,
+            phone: phoneWithCode,
             profession: profession,
             bio: bio,
             country: country,
@@ -357,7 +394,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _dobController.dispose();
     _professionController.dispose();
     _bioController.dispose();
-    _countryController.dispose();
     for (final c in _platformControllers) { c.dispose(); }
     for (final c in _urlControllers) { c.dispose(); }
     super.dispose();
@@ -428,54 +464,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     },
                   ),
                   const SizedBox(height: 20),
-                  InputFieldModule(
-                    label: "Country",
-                    controller: _countryController,
+                  CountryPickerField(
+                    selected: _selectedCountry,
+                    onChanged: (c) => setState(() {
+                      _selectedCountry = c;
+                      _countryError = null;
+                    }),
                     errorText: _countryError,
-                    inputFormatters: [LengthLimitingTextInputFormatter(20)],
                   ),
                   const SizedBox(height: 20),
-                  InputFieldModule(
-                    label: "Phone Number",
+                  PhoneWithCodeField(
                     controller: _phoneController,
-                    keyboardType: TextInputType.phone,
+                    selectedCountry: _selectedCountry,
                     errorText: _phoneError,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(11),
-                    ],
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.only(left: 16),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            "+88",
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            height: 24,
-                            child: VerticalDivider(
-                              thickness: 1,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.3),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                     onChanged: (value) {
                       setState(() {
                         if (value.trim().isEmpty) {
                           _phoneError = null;
-                        } else if (!RegExp(r'^\+?\d{10,15}$').hasMatch(value.trim())) {
+                        } else if (!RegExp(r'^\d{6,15}$').hasMatch(value.trim())) {
                           _phoneError = "Enter a valid phone number";
                         } else {
                           _phoneError = null;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,15 +8,17 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:edtech/app/setup_network_caller.dart';
 import 'package:edtech/app/urls.dart';
+import 'package:edtech/features/courses/data/models/upload_task.dart';
+import 'package:edtech/features/courses/data/repositories/upload_queue_repository.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
+import 'package:edtech/global/core/services/native_upload_bridge.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/services/upload_notification_service.dart';
+import 'package:edtech/global/core/services/upload_path_storage.dart';
 
 class _StreamedProgressRequest extends http.BaseRequest {
   final Stream<List<int>> _stream;
-
   _StreamedProgressRequest(super.method, super.url, this._stream);
-
   @override
   http.ByteStream finalize() {
     super.finalize();
@@ -25,8 +28,8 @@ class _StreamedProgressRequest extends http.BaseRequest {
 
 enum UploadStep {
   idle,
-  uploadingUrls,
-  uploadingImage,
+  gettingUrl,
+  uploadingThumbnail,
   uploadingVideo,
   creatingCourse,
   done,
@@ -67,34 +70,16 @@ class CourseUploadProvider extends ChangeNotifier {
   String? _createdCourseId;
   String? get createdCourseId => _createdCourseId;
 
-  bool _isCancelled = false;
-  http.Client? _activeClient;
-  int? _currentNotifId;
-
-  void cancel() {
-    _isCancelled = true;
-    _activeClient?.close();
-    _activeClient = null;
-    _step = UploadStep.idle;
-    _uploadProgress = 0.0;
-    if (_currentNotifId != null) {
-      UploadNotificationService.cancel(notificationId: _currentNotifId);
-    }
-    UploadNotificationService.stopService();
-    notifyListeners();
-  }
-
-  String get buttonText {
+  String get stepMessage {
     switch (_step) {
-      case UploadStep.uploadingUrls:
-        return 'Processing...';
-      case UploadStep.uploadingImage:
+      case UploadStep.gettingUrl:
+        return 'Getting upload URL...';
+      case UploadStep.uploadingThumbnail:
+        final pct = (_uploadProgress * 100).toInt();
+        return pct > 0 ? 'Uploading thumbnail $pct%' : 'Uploading thumbnail...';
       case UploadStep.uploadingVideo:
         final pct = (_uploadProgress * 100).toInt();
-        final base = _step == UploadStep.uploadingImage
-            ? 'Uploading image'
-            : 'Uploading video';
-        return pct > 0 ? '$base $pct%' : base;
+        return pct > 0 ? 'Uploading intro video $pct%' : 'Uploading intro video...';
       case UploadStep.creatingCourse:
         return 'Creating course...';
       case UploadStep.error:
@@ -104,6 +89,8 @@ class CourseUploadProvider extends ChangeNotifier {
         return 'Create Course';
     }
   }
+
+  String get buttonText => stepMessage;
 
   Future<XFile?> pickThumbnail() async {
     if (_isPickingThumbnail) return null;
@@ -165,11 +152,6 @@ class CourseUploadProvider extends ChangeNotifier {
     _createdCourseId = null;
     _thumbnailFile = null;
     _videoFile = null;
-    if (_currentNotifId != null) {
-      UploadNotificationService.cancel(notificationId: _currentNotifId);
-    }
-    _currentNotifId = null;
-    UploadNotificationService.stopService();
     notifyListeners();
   }
 
@@ -211,11 +193,9 @@ class CourseUploadProvider extends ChangeNotifier {
       final uploadUrl = info?['uploadUrl'] as String?;
       final fileUrl = info?['fileUrl'] as String?;
       if (uploadUrl != null && fileUrl != null) {
-        await _uploadToS3(
-          uploadUrl,
-          thumbnail,
-          _inferImageContentType(thumbnail.name),
-        );
+        ToastService.showInfo('Uploading thumbnail...');
+        await _directUploadToS3(uploadUrl, thumbnail, _inferImageContentType(thumbnail.name));
+        ToastService.showSuccess('Thumbnail uploaded');
         result['thumbnailUrl'] = fileUrl;
       }
     }
@@ -225,23 +205,14 @@ class CourseUploadProvider extends ChangeNotifier {
       final uploadUrl = info?['uploadUrl'] as String?;
       final fileUrl = info?['fileUrl'] as String?;
       if (uploadUrl != null && fileUrl != null) {
-        await _uploadToS3(uploadUrl, video, _inferVideoContentType(video.name));
+        ToastService.showInfo('Uploading intro video...');
+        await _directUploadToS3(uploadUrl, video, _inferVideoContentType(video.name));
+        ToastService.showSuccess('Intro video uploaded');
         result['introVideoUrl'] = fileUrl;
       }
     }
 
     return result;
-  }
-
-  bool _checkCancelled() {
-    if (_isCancelled) {
-      _step = UploadStep.idle;
-      _uploadProgress = 0.0;
-      _errorMessage = null;
-      notifyListeners();
-      return true;
-    }
-    return false;
   }
 
   Future<bool> uploadCourse({
@@ -254,17 +225,46 @@ class CourseUploadProvider extends ChangeNotifier {
     required String type,
     required double price,
   }) async {
-    _isCancelled = false;
     _errorMessage = null;
-    _currentNotifId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    final meta = CourseUploadMetadata(
+      courseTitle: title,
+      shortDescription: shortDescription,
+      description: description,
+      requirements: requirements,
+      language: language,
+      level: level,
+      type: type,
+      price: price,
+      videoPath: _videoFile?.path,
+    );
+    final metadataJson = jsonEncode(meta.toJson());
+
+    await UploadPathStorage.savePath(
+      filePath: _thumbnailFile!.path,
+      uploadType: 'course',
+      title: title,
+      metadata: metadataJson,
+    );
+
+    final queueItem = UploadQueueItem(
+      filePath: _thumbnailFile!.path,
+      title: 'Course: $title',
+      status: 'pending',
+      uploadType: 'course',
+      metadata: metadataJson,
+    );
+    await UploadQueueRepository.insert(queueItem);
+
+    _uploadProgress = 0.0;
+    _step = UploadStep.gettingUrl;
     notifyListeners();
+    ToastService.showInfo('Getting upload URL...');
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
       await UploadNotificationService.requestNotificationPermission();
       await UploadNotificationService.startService();
-      _step = UploadStep.uploadingUrls;
-      notifyListeners();
+      final notifId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
       final thumbName = _thumbnailFile!.name;
       final thumbContentType = _inferImageContentType(thumbName);
@@ -283,97 +283,92 @@ class CourseUploadProvider extends ChangeNotifier {
         body: body,
       );
 
-      if (_checkCancelled()) return false;
-
       if (!urlsResponse.isSuccess) {
         _step = UploadStep.error;
         _errorMessage = urlsResponse.errorMessage;
-        AppLogger.e(
-          'CourseUpload: upload-urls failed — code=${urlsResponse.responseCode}, error=$_errorMessage, body=${urlsResponse.responseData}',
-        );
         ToastService.showError('Failed to get upload URL');
-        await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
         notifyListeners();
         return false;
       }
-
-      AppLogger.i(
-        'CourseUpload: upload-urls response — ${urlsResponse.responseData}',
-      );
 
       final raw = urlsResponse.responseData;
       final wrapper = raw is Map ? raw['data'] : null;
       final innerData = wrapper is Map ? wrapper['data'] ?? wrapper : wrapper;
       if (innerData is! Map<String, dynamic>) {
         _step = UploadStep.error;
-        _errorMessage = 'Invalid response from server';
-        AppLogger.e('CourseUpload: unexpected response format — $raw');
-        ToastService.showError('Failed to get upload URL');
-        await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
+        _errorMessage = 'Invalid server response';
+        ToastService.showError('Invalid server response');
         notifyListeners();
         return false;
       }
+
       final thumbInfo = innerData['thumbnail'] as Map<String, dynamic>?;
-      if (thumbInfo == null) {
+      if (thumbInfo == null || thumbInfo['uploadUrl'] == null || thumbInfo['fileUrl'] == null) {
         _step = UploadStep.error;
-        _errorMessage = 'Missing thumbnail upload info';
-        ToastService.showError('Failed to get upload URL');
-        await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
-        notifyListeners();
-        return false;
-      }
-      final thumbUploadUrl = thumbInfo['uploadUrl'] as String?;
-      final thumbFileUrl = thumbInfo['fileUrl'] as String?;
-      if (thumbUploadUrl == null || thumbFileUrl == null) {
-        _step = UploadStep.error;
-        _errorMessage = 'Invalid thumbnail upload info';
-        ToastService.showError('Failed to get upload URL');
-        await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
+        ToastService.showError('Missing thumbnail upload info');
         notifyListeners();
         return false;
       }
 
-      _step = UploadStep.uploadingImage;
+      final thumbUploadUrl = thumbInfo['uploadUrl'] as String;
+      final thumbFileUrl = thumbInfo['fileUrl'] as String;
+
+      await NativeUploadBridge.startNativeUpload(
+        filePath: _thumbnailFile!.path,
+        uploadUrl: thumbUploadUrl,
+        title: 'Course Thumbnail: $title',
+        contentType: thumbContentType,
+        uploadType: 'course',
+      );
+
+      _step = UploadStep.uploadingThumbnail;
+      _uploadProgress = 0.0;
       notifyListeners();
+      ToastService.showInfo('Uploading thumbnail...');
 
-      await _uploadToS3(thumbUploadUrl, _thumbnailFile!, thumbContentType);
-      if (_checkCancelled()) return false;
+      await _uploadToS3(thumbUploadUrl, _thumbnailFile!, thumbContentType, notifId, 'Uploading Course Thumbnail');
+
+      _step = UploadStep.uploadingThumbnail;
+      _uploadProgress = 1.0;
+      notifyListeners();
+      ToastService.showSuccess('Thumbnail uploaded');
 
       String? videoFileUrl;
       final videoInfo = innerData['video'] as Map<String, dynamic>?;
       if (videoInfo != null) {
-        videoFileUrl = videoInfo['fileUrl'] as String;
         final videoUploadUrl = videoInfo['uploadUrl'] as String;
+        videoFileUrl = videoInfo['fileUrl'] as String;
+
+        await NativeUploadBridge.startNativeUpload(
+          filePath: _videoFile!.path,
+          uploadUrl: videoUploadUrl,
+          title: 'Course Video: $title',
+          contentType: _inferVideoContentType(_videoFile!.name),
+          uploadType: 'course',
+        );
 
         _step = UploadStep.uploadingVideo;
+        _uploadProgress = 0.0;
         notifyListeners();
+        ToastService.showInfo('Uploading intro video...');
 
         await _uploadToS3(
           videoUploadUrl,
           _videoFile!,
           _inferVideoContentType(_videoFile!.name),
+          notifId,
+          'Uploading Course Intro Video',
         );
-        if (_checkCancelled()) return false;
+
+        _step = UploadStep.uploadingVideo;
+        _uploadProgress = 1.0;
+        notifyListeners();
+        ToastService.showSuccess('Intro video uploaded');
       }
 
       _step = UploadStep.creatingCourse;
       notifyListeners();
+      ToastService.showInfo('Creating course...');
 
       final courseResponse = await getNetworkCaller().postRequest(
         url: Urls.createCourseUrl,
@@ -391,67 +386,50 @@ class CourseUploadProvider extends ChangeNotifier {
         },
       );
 
-      if (courseResponse.isSuccess) {
-        final rawData = courseResponse.responseData['data'];
-        final data = (rawData is Map) ? (rawData['data'] ?? rawData) : rawData;
-        _createdCourseId = (data is Map<String, dynamic>)
-            ? data['id']?.toString()
-            : null;
-        _step = UploadStep.done;
-        ToastService.showSuccess('Course created successfully');
-        await UploadNotificationService.showSuccess(
-          notificationId: _currentNotifId!,
-          title: 'Course Created',
-        );
-        await UploadNotificationService.stopService();
-        notifyListeners();
-        return true;
-      } else {
+      if (!courseResponse.isSuccess) {
         _step = UploadStep.error;
         _errorMessage = courseResponse.errorMessage;
-        ToastService.showError(
-          courseResponse.errorMessage ?? 'Failed to create course',
-        );
-        await UploadNotificationService.showError(
-          notificationId: _currentNotifId!,
-          title: 'Upload Failed',
-        );
-        await UploadNotificationService.stopService();
+        ToastService.showError(courseResponse.errorMessage ?? 'Failed to create course');
         notifyListeners();
         return false;
       }
-    } catch (e) {
-      if (_isCancelled) {
-        _step = UploadStep.idle;
-        _uploadProgress = 0.0;
-        _errorMessage = null;
-        notifyListeners();
-        return false;
-      }
-      _step = UploadStep.error;
-      _errorMessage = e.toString();
-      AppLogger.e('CourseUpload: unexpected error — $_errorMessage');
-      ToastService.showError('Something went wrong. Please try again.');
-      await UploadNotificationService.showError(
-        notificationId: _currentNotifId!,
-        title: 'Upload Failed',
+
+      final rawData = courseResponse.responseData['data'];
+      final data = (rawData is Map) ? (rawData['data'] ?? rawData) : rawData;
+      _createdCourseId = (data is Map<String, dynamic>) ? data['id']?.toString() : null;
+
+      await NativeUploadBridge.clearState();
+      _step = UploadStep.done;
+      notifyListeners();
+      ToastService.showSuccess('Course created successfully!');
+      await UploadNotificationService.showSuccess(
+        notificationId: notifId,
+        title: 'Course Created',
+        body: title,
       );
       await UploadNotificationService.stopService();
+
+      await UploadPathStorage.clearAll();
+      await UploadQueueRepository.clearCompleted();
+
+      return true;
+    } catch (e) {
+      _step = UploadStep.error;
+      _errorMessage = e.toString();
+      AppLogger.e('CourseUpload: error — $_errorMessage');
+      ToastService.showError('Upload failed. The course will resume from queue.');
       notifyListeners();
       return false;
     }
   }
 
-  Future<void> _uploadToS3(String url, XFile file, String contentType) async {
-    _uploadProgress = 0.0;
-    notifyListeners();
-
+  Future<void> _uploadToS3(String url, XFile file, String contentType, int notifId, String notifTitle) async {
     final total = await file.length();
     final stream = file.openRead().cast<List<int>>();
 
     int sent = 0;
     int lastPct = -1;
-    DateTime lastUiUpdate = DateTime.now();
+    DateTime lastToast = DateTime.now();
 
     final progressStream = stream.transform(
       StreamTransformer<List<int>, List<int>>.fromHandlers(
@@ -461,18 +439,16 @@ class CourseUploadProvider extends ChangeNotifier {
           if (pct != lastPct) {
             lastPct = pct;
             _uploadProgress = sent / total;
+            notifyListeners();
             final now = DateTime.now();
-            if (now.difference(lastUiUpdate) >=
-                const Duration(milliseconds: 200)) {
-              lastUiUpdate = now;
-              notifyListeners();
+            if (now.difference(lastToast) >= const Duration(seconds: 1)) {
+              lastToast = now;
             }
             UploadNotificationService.showProgress(
-              notificationId: _currentNotifId!,
+              notificationId: notifId,
               progress: sent,
               total: total,
-              title: 'Uploading Course Assets',
-              fileName: file.name,
+              title: notifTitle,
             );
           }
           sink.add(chunk);
@@ -480,74 +456,52 @@ class CourseUploadProvider extends ChangeNotifier {
       ),
     );
 
-    final request = _StreamedProgressRequest(
-      'PUT',
-      Uri.parse(url),
-      progressStream,
-    );
+    final request = _StreamedProgressRequest('PUT', Uri.parse(url), progressStream);
     request.headers['Content-Type'] = contentType;
     request.contentLength = total;
 
     final client = http.Client();
-    _activeClient = client;
-
     try {
-      final response = await client
-          .send(request)
-          .timeout(const Duration(hours: 6));
-      _uploadProgress = 1.0;
-      notifyListeners();
+      final response = await client.send(request).timeout(const Duration(hours: 6));
       if (response.statusCode != 200) {
-        throw HttpException(
-          'Upload failed with status ${response.statusCode}',
-          uri: Uri.parse(url),
-        );
+        throw HttpException('Upload failed: ${response.statusCode}');
       }
-    } on TimeoutException {
-      throw HttpException(
-        'Upload timed out. Check your connection and try again.',
-        uri: Uri.parse(url),
-      );
     } finally {
-      _uploadProgress = 0.0;
-      notifyListeners();
-      if (_activeClient == client) _activeClient = null;
       client.close();
+    }
+  }
+
+  Future<void> _directUploadToS3(String url, XFile file, String contentType) async {
+    final bytes = await file.readAsBytes();
+    final response = await http.put(
+      Uri.parse(url),
+      headers: {'Content-Type': contentType},
+      body: bytes,
+    ).timeout(const Duration(minutes: 5));
+    if (response.statusCode != 200) {
+      throw HttpException('Upload failed: ${response.statusCode}');
     }
   }
 
   String _inferImageContentType(String filename) {
     final ext = filename.split('.').last.toLowerCase();
     switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'avif':
-        return 'image/avif';
-      default:
-        return 'image/jpeg';
+      case 'jpg': case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'webp': return 'image/webp';
+      case 'avif': return 'image/avif';
+      default: return 'image/jpeg';
     }
   }
 
   String _inferVideoContentType(String filename) {
     final ext = filename.split('.').last.toLowerCase();
     switch (ext) {
-      case 'mp4':
-        return 'video/mp4';
-      case 'mov':
-      case 'quicktime':
-        return 'video/quicktime';
-      case 'mkv':
-      case 'x-matroska':
-        return 'video/x-matroska';
-      case 'webm':
-        return 'video/webm';
-      default:
-        return 'video/mp4';
+      case 'mp4': return 'video/mp4';
+      case 'mov': case 'quicktime': return 'video/quicktime';
+      case 'mkv': case 'x-matroska': return 'video/x-matroska';
+      case 'webm': return 'video/webm';
+      default: return 'video/mp4';
     }
   }
 }

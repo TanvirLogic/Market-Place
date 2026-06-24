@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
 import 'package:edtech/features/manage_module/providers/manage_module_provider.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_header.dart';
@@ -185,12 +186,12 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                           lessonType: LessonType.video,
                           moduleId: provider.modules[index].id,
                           courseId: provider.courseId,
-                          onAddLesson: (title, file, onProgress) =>
+                          onAddLesson: (title, file, _) =>
                               provider.addVideoLesson(
                                 index,
                                 title,
                                 file,
-                                onProgress: onProgress,
+                                queueProvider: context.read<UnifiedUploadQueueProvider>(),
                               ),
                         ),
                         onAddResource: (index) =>

@@ -40,6 +40,13 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>processing</string>
+		<string>fetch</string>
+		<string>downloads</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>net.eduverseapp.upload.refresh</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
