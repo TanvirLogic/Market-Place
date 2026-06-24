@@ -267,16 +267,16 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       metadata: metadataJson,
     );
 
+    final permission = await _ensureNotificationPermission();
+    if (!permission) {
+      ToastService.showError('Notification permission required to upload');
+      return 0;
+    }
+
     final id = await UploadQueueRepository.insert(item);
     _queue = await UploadQueueRepository.getActive();
     _checkNextActive();
     notifyListeners();
-
-    final permission = await _ensureNotificationPermission();
-    if (!permission) {
-      ToastService.showSuccess('Lesson saved. Enable notifications to start upload.');
-      return id;
-    }
 
     final urls = await BackgroundUploadService.fetchPresignedUrl(
       filePath: videoPath,
@@ -367,16 +367,16 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       metadata: metadataJson,
     );
 
+    final permission = await _ensureNotificationPermission();
+    if (!permission) {
+      ToastService.showError('Notification permission required to upload');
+      return 0;
+    }
+
     final id = await UploadQueueRepository.insert(item);
     _queue = await UploadQueueRepository.getActive();
     _checkNextActive();
     notifyListeners();
-
-    final permission = await _ensureNotificationPermission();
-    if (!permission) {
-      ToastService.showSuccess('Resource saved. Enable notifications to start upload.');
-      return id;
-    }
 
     final urls = await BackgroundUploadService.fetchPresignedUrl(
       filePath: filePath,

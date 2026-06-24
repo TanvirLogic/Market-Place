@@ -98,13 +98,20 @@ class _ManageModuleAddLessonSheetState
     final title = _titleController.text.trim();
 
     if (!mounted) return;
-    Navigator.of(context).pop();
+    setState(() => _isUploading = true);
 
-    widget.onAddLesson(
+    final success = await widget.onAddLesson(
       title,
       _selectedFile!,
       (_) {},
     );
+
+    if (!mounted) return;
+    setState(() => _isUploading = false);
+
+    if (success) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override

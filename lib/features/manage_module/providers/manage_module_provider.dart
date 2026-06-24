@@ -380,6 +380,11 @@ class ManageModuleProvider extends ChangeNotifier {
         moduleId: module.id,
         courseId: courseId,
       );
+      if (queueId <= 0) {
+        lesson.uploadStatus = 'failed';
+        notifyListeners();
+        return false;
+      }
       _queueItemToLesson[queueId] = lessonId;
       _startProgressPolling();
       return true;
