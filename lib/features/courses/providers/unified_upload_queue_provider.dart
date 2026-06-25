@@ -185,8 +185,9 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     );
 
     if (urls == null) {
+      await _cleanupFailedUpload(id, thumbnailPath);
       ToastService.showError('Failed to get upload URL');
-      return id;
+      return 0;
     }
 
     final authToken = AuthController.accessToken;
@@ -217,16 +218,18 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       itemId: id,
     );
     if (!syncOk) {
+      await _cleanupFailedUpload(id, thumbnailPath);
       ToastService.showError('Failed to sync course to native layer');
-      return id;
+      return 0;
     }
 
     await UploadQueueRepository.updateUrls(id: id, uploadUrl: urls['uploadUrl']!, fileUrl: urls['fileUrl']!);
 
     final started = await NativeUploadBridge.startQueueProcessing();
     if (!started) {
+      await _cleanupFailedUpload(id, thumbnailPath);
       ToastService.showError('Failed to start native upload service');
-      return id;
+      return 0;
     }
     ToastService.showSuccess('Course upload queued');
     return id;
@@ -269,6 +272,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
 
     final permission = await _ensureNotificationPermission();
     if (!permission) {
+      await UploadPathStorage.removePathByFilePath(videoPath);
       ToastService.showError('Notification permission required to upload');
       return 0;
     }
@@ -286,11 +290,12 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
         'videoContentType': BackgroundUploadService.inferVideoContentType(name),
       },
       extraFields: {'moduleID': moduleId},
-    );
+      );
 
     if (urls == null) {
+      await _cleanupFailedUpload(id, videoPath);
       ToastService.showError('Failed to get upload URL');
-      return id;
+      return 0;
     }
 
     final authToken = AuthController.accessToken;
@@ -316,16 +321,18 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       itemId: id,
     );
     if (!syncOk) {
+      await _cleanupFailedUpload(id, videoPath);
       ToastService.showError('Failed to sync lesson to native layer');
-      return id;
+      return 0;
     }
 
     await UploadQueueRepository.updateUrls(id: id, uploadUrl: urls['uploadUrl']!, fileUrl: urls['fileUrl']!);
 
     final started = await NativeUploadBridge.startQueueProcessing();
     if (!started) {
+      await _cleanupFailedUpload(id, videoPath);
       ToastService.showError('Failed to start native upload service');
-      return id;
+      return 0;
     }
     ToastService.showSuccess('Video lesson queued');
     return id;
@@ -368,6 +375,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
 
     final permission = await _ensureNotificationPermission();
     if (!permission) {
+      await UploadPathStorage.removePathByFilePath(filePath);
       ToastService.showError('Notification permission required to upload');
       return 0;
     }
@@ -387,8 +395,9 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     );
 
     if (urls == null) {
+      await _cleanupFailedUpload(id, filePath);
       ToastService.showError('Failed to get upload URL');
-      return id;
+      return 0;
     }
 
     final authToken = AuthController.accessToken;
@@ -415,16 +424,18 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       itemId: id,
     );
     if (!syncOk) {
+      await _cleanupFailedUpload(id, filePath);
       ToastService.showError('Failed to sync resource to native layer');
-      return id;
+      return 0;
     }
 
     await UploadQueueRepository.updateUrls(id: id, uploadUrl: urls['uploadUrl']!, fileUrl: urls['fileUrl']!);
 
     final started = await NativeUploadBridge.startQueueProcessing();
     if (!started) {
+      await _cleanupFailedUpload(id, filePath);
       ToastService.showError('Failed to start native upload service');
-      return id;
+      return 0;
     }
     ToastService.showSuccess('Resource queued');
     return id;
@@ -434,9 +445,22 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
   //  Presigned URL fetch + native sync (video_post)
   // ──────────────────────────────────────────────
 
+  /// Marks the SQLite row as failed and removes the FSS entry so the item
+  /// is not picked up by recovery on next app start.
+  Future<void> _cleanupFailedUpload(int id, String filePath) async {
+    await UploadQueueRepository.markFailed(id, 'Upload setup failed');
+    await UploadPathStorage.removePathByFilePath(filePath);
+    _queue = await UploadQueueRepository.getActive();
+    notifyListeners();
+  }
+
   Future<bool> _fetchAndSyncVideoPost(File file, String title, int duration, int fileSize, int id) async {
     final permission = await _ensureNotificationPermission();
-    if (!permission) return false;
+    if (!permission) {
+      await _cleanupFailedUpload(id, file.path);
+      ToastService.showError('Notification permission required to upload');
+      return false;
+    }
 
     final urls = await BackgroundUploadService.fetchPresignedUrl(
       filePath: file.path,
@@ -448,7 +472,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     );
 
     if (urls == null) {
-      await UploadQueueRepository.markFailed(id, 'Failed to get upload URL');
+      await _cleanupFailedUpload(id, file.path);
       AppLogger.w('_fetchAndSyncVideoPost: presigned URL fetch returned null');
       ToastService.showError('Failed to get upload URL');
       return false;
@@ -475,6 +499,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       itemId: id,
     );
     if (!syncOk) {
+      await _cleanupFailedUpload(id, file.path);
       AppLogger.w('_fetchAndSyncVideoPost: startNativeUpload returned false');
       ToastService.showError('Failed to sync upload to native layer');
       return false;
@@ -484,6 +509,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
 
     final started = await NativeUploadBridge.startQueueProcessing();
     if (!started) {
+      await _cleanupFailedUpload(id, file.path);
       AppLogger.w('_fetchAndSyncVideoPost: startQueueProcessing returned false');
       ToastService.showError('Failed to start native upload service');
       return false;

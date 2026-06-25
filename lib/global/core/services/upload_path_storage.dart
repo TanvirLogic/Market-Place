@@ -74,6 +74,22 @@ class UploadPathStorage {
     await _syncToAtomicQueue();
   }
 
+  /// Removes the FSS entry whose [filePath] matches, then resyncs the atomic queue.
+  static Future<void> removePathByFilePath(String filePath) async {
+    final all = await _storage.readAll();
+    for (final entry in all.entries) {
+      if (!entry.key.startsWith(_prefix)) continue;
+      if (entry.value.isEmpty) continue;
+      try {
+        final json = jsonDecode(entry.value) as Map<String, dynamic>;
+        if (json['filePath'] == filePath) {
+          await _storage.delete(key: entry.key);
+        }
+      } catch (_) {}
+    }
+    await _syncToAtomicQueue();
+  }
+
   static Future<List<PendingUploadPath>> getAllPendingPaths() async {
     final all = await _storage.readAll();
     final paths = <PendingUploadPath>[];

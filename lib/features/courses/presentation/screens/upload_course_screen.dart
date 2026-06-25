@@ -113,7 +113,6 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
     setState(() => _isUploading = false);
 
     if (id > 0) {
-      ToastService.showSuccess('Course queued for upload');
       Navigator.of(context).pop();
     }
   }
