@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:edtech/features/courses/data/models/upload_task.dart';
 import 'package:edtech/features/courses/data/repositories/upload_queue_repository.dart';
 import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import 'package:edtech/app/urls.dart';
@@ -149,7 +147,7 @@ class ManageModuleProvider extends ChangeNotifier {
   Future<void> _restorePendingUploads() async {
     try {
       final allItems = await UploadQueueRepository.getActive();
-      final lessonItems = allItems.where((i) => i.uploadType == 'module_lesson').toList();
+      final lessonItems = allItems.where((i) => i.uploadType == 'module_lesson' || i.uploadType == 'resource').toList();
       if (lessonItems.isEmpty) return;
 
       final nativeData = await NativeUploadBridge.getQueueItems();
@@ -202,17 +200,19 @@ class ManageModuleProvider extends ChangeNotifier {
         final status = nativeItem?['status'] as String? ?? item.status;
         final fileUrl = nativeItem?['fileUrl'] as String? ?? item.fileUrl;
 
-        AppLogger.i('_restorePendingUploads: restoring lesson "${meta.lessonTitle}" — status=$status, progress=$progress');
+        final isResource = item.uploadType == 'resource';
+        AppLogger.i('_restorePendingUploads: restoring ${isResource ? "resource" : "lesson"} "${meta.lessonTitle}" — status=$status, progress=$progress');
 
         final lessonId = _nextLessonId++;
         final lesson = Lesson(
           id: lessonId,
           title: meta.lessonTitle,
           duration: '0:00',
-          type: LessonType.video,
+          type: isResource ? LessonType.resource : LessonType.video,
           uploadProgress: progress,
           uploadStatus: status,
-          videoUrl: fileUrl,
+          videoUrl: isResource ? null : fileUrl,
+          fileUrl: isResource ? fileUrl : null,
         );
 
         module.lessons.add(lesson);
@@ -383,6 +383,7 @@ class ManageModuleProvider extends ChangeNotifier {
       body: body,
     );
     if (response.isSuccess) {
+      await refresh();
       ToastService.showSuccess('Course updated successfully');
       return true;
     } else {
@@ -508,7 +509,7 @@ class ManageModuleProvider extends ChangeNotifier {
                 lesson.uploadStatus = 'completed';
                 final cachedUrl = _pendingFileUrls.remove(entry.key);
                 if (cachedUrl != null && cachedUrl.isNotEmpty) {
-                  lesson.videoUrl ??= cachedUrl;
+                  _setLessonUrl(lesson, cachedUrl);
                 }
                 updated = true;
               }
@@ -551,11 +552,11 @@ class ManageModuleProvider extends ChangeNotifier {
 
             if (status == 'completed') {
               if (fileUrl != null && fileUrl.isNotEmpty) {
-                lesson.videoUrl ??= fileUrl;
+                _setLessonUrl(lesson, fileUrl);
               } else {
                 final cachedUrl = _pendingFileUrls.remove(queueId);
                 if (cachedUrl != null && cachedUrl.isNotEmpty) {
-                  lesson.videoUrl ??= cachedUrl;
+                  _setLessonUrl(lesson, cachedUrl);
                 }
               }
               _queueItemToLesson.remove(queueId);
@@ -588,83 +589,58 @@ class ManageModuleProvider extends ChangeNotifier {
     return null;
   }
 
-  Future<bool> addResourceLesson(int moduleIndex, String title, XFile resourceFile) async {
-    final module = _modules[moduleIndex];
-    final fileSize = await resourceFile.length();
-    final filename = resourceFile.name;
-    final contentType = _inferResourceContentType(filename);
+  void _setLessonUrl(Lesson lesson, String url) {
+    if (lesson.type == LessonType.resource) {
+      lesson.fileUrl ??= url;
+    } else {
+      lesson.videoUrl ??= url;
+    }
+  }
 
-    ToastService.showInfo('Getting upload URL...');
+  Future<bool> addResourceLesson(
+    int moduleIndex,
+    String title,
+    XFile resourceFile, {
+    UnifiedUploadQueueProvider? queueProvider,
+  }) async {
+    final module = _modules[moduleIndex];
+    final lessonId = _nextLessonId++;
+
+    final lesson = Lesson(
+      id: lessonId,
+      title: title,
+      duration: '0:00',
+      type: LessonType.resource,
+      uploadProgress: 0.0,
+      uploadStatus: 'pending',
+    );
+    module.lessons.add(lesson);
+    _hasUnsavedChanges = true;
+    notifyListeners();
 
     try {
-      final uploadUrlResponse = await getNetworkCaller().postRequest(
-        url: Urls.courseModuleResourceUploadUrl,
-        body: {'filename': filename, 'contentType': contentType},
+      final contentType = _inferResourceContentType(resourceFile.name);
+      final queueId = await queueProvider!.addResourceToQueue(
+        filePath: resourceFile.path,
+        lessonTitle: title,
+        moduleId: module.id,
+        courseId: courseId,
+        contentType: contentType,
       );
-      if (!uploadUrlResponse.isSuccess) {
-        ToastService.showError(uploadUrlResponse.errorMessage ?? 'Failed to get upload URL');
+      if (queueId <= 0) {
+        lesson.uploadStatus = 'failed';
+        notifyListeners();
+        ToastService.showError('Failed to queue resource');
         return false;
       }
-
-      final raw = uploadUrlResponse.responseData;
-      final data = (raw is Map) ? (raw['data'] is Map ? raw['data']['data'] ?? raw['data'] : raw['data']) : null;
-      if (data is! Map) {
-        ToastService.showError('Invalid upload URL response');
-        return false;
-      }
-      final uploadUrl = data['uploadUrl'] as String?;
-      final fileUrl = data['fileUrl'] as String?;
-      if (uploadUrl == null || fileUrl == null) {
-        ToastService.showError('Invalid upload URL response');
-        return false;
-      }
-
-      ToastService.showInfo('Uploading resource...');
-      final bytes = await resourceFile.readAsBytes();
-      final response = await http.put(
-        Uri.parse(uploadUrl),
-        headers: {'Content-Type': contentType},
-        body: bytes,
-      ).timeout(const Duration(minutes: 5));
-      if (response.statusCode != 200) {
-        throw HttpException('Upload failed: ${response.statusCode}');
-      }
-      ToastService.showSuccess('Resource uploaded');
-
-      ToastService.showInfo('Creating lesson...');
-      final lessonResponse = await getNetworkCaller().postRequest(
-        url: Urls.courseModuleResourceUrl,
-        body: {
-          'moduleId': module.id,
-          'title': title,
-          'fileUrl': fileUrl,
-          'fileType': contentType,
-          'fileSize': fileSize,
-        },
-      );
-      if (!lessonResponse.isSuccess) {
-        ToastService.showError(lessonResponse.errorMessage ?? 'Failed to create lesson');
-        return false;
-      }
-
-      final lessonRaw = lessonResponse.responseData;
-      final lessonData = (lessonRaw is Map) ? (lessonRaw['data'] is Map ? lessonRaw['data']['data'] ?? lessonRaw['data'] : lessonRaw['data']) : null;
-      final lessonId = (lessonData is Map) ? lessonData['id'] as int? : null;
-
-      module.lessons.add(
-        Lesson(
-          id: lessonId ?? _nextLessonId++,
-          title: title,
-          duration: '0:00',
-          type: LessonType.resource,
-        ),
-      );
-      notifyListeners();
-      ToastService.showSuccess('Resource lesson added!');
+      _queueItemToLesson[queueId] = lessonId;
+      _startProgressPolling();
       return true;
     } catch (e) {
-      AppLogger.e('addResourceLesson error: $e');
-      ToastService.showError('Upload failed');
+      AppLogger.e('addResourceLesson queue error: $e');
+      lesson.uploadStatus = 'failed';
+      notifyListeners();
+      ToastService.showError('Failed to queue resource lesson');
       return false;
     }
   }

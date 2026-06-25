@@ -175,6 +175,10 @@ class UploadPathStorage {
     await _syncToAtomicQueue();
   }
 
+  // ──────────────────────────────────────────────
+  //  Pending edit callback storage (course edit flow)
+  // ──────────────────────────────────────────────
+
   static String _inferContentType(String filename) {
     final ext = filename.split('.').last.toLowerCase();
     switch (ext) {

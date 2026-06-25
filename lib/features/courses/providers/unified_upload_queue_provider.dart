@@ -262,6 +262,11 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     required int moduleId,
     required int courseId,
   }) async {
+    if (!File(videoPath).existsSync()) {
+      AppLogger.w('addModuleLessonToQueue: file not found at $videoPath');
+      ToastService.showError('Video file not found');
+      return 0;
+    }
     final meta = ModuleLessonMetadata(
       moduleId: moduleId,
       courseId: courseId,
@@ -366,6 +371,11 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     required int courseId,
     required String contentType,
   }) async {
+    if (!File(filePath).existsSync()) {
+      AppLogger.w('addResourceToQueue: file not found at $filePath');
+      ToastService.showError('Resource file not found');
+      return 0;
+    }
     final meta = ModuleLessonMetadata(
       moduleId: moduleId,
       courseId: courseId,
@@ -407,11 +417,12 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
 
     final urls = await BackgroundUploadService.fetchPresignedUrl(
       filePath: filePath,
-      endpoint: Urls.courseModuleResourceUrl,
+      endpoint: Urls.courseModuleResourceUploadUrl,
       buildPayload: (name) => {
         'filename': name,
         'contentType': contentType,
       },
+      extraFields: {'moduleID': moduleId},
     );
 
     if (urls == null) {
@@ -727,7 +738,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
         }
         break;
       case 'resource':
-        endpoint = Urls.courseModuleResourceUrl;
+        endpoint = Urls.courseModuleResourceUploadUrl;
         callbackUrl = Urls.courseModuleResourceUrl;
         buildPayload = (name) {
           final ct = item.metadata != null

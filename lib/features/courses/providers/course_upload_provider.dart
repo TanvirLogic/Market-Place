@@ -155,48 +155,58 @@ class CourseUploadProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Map<String, String?>> uploadEditAssets({
-    XFile? thumbnail,
-    XFile? video,
+  Future<bool> uploadEditAssets({
+    required XFile? thumbnail,
+    required XFile? video,
+    required Map<String, dynamic> callbackBody,
+    required int courseId,
+    VoidCallback? onCourseUpdated,
   }) async {
-    if (thumbnail == null && video == null) return {};
+    if (thumbnail == null && video == null) return true;
 
-    final body = <String, dynamic>{};
+    // Step 1: Get presigned URLs (fast API call — sheet awaits this)
+    final presignedBody = <String, dynamic>{};
     if (thumbnail != null) {
-      body['thumbnailFilename'] = thumbnail.name;
-      body['thumbnailContentType'] = _inferImageContentType(thumbnail.name);
+      presignedBody['thumbnailFilename'] = thumbnail.name;
+      presignedBody['thumbnailContentType'] = _inferImageContentType(thumbnail.name);
     }
     if (video != null) {
-      body['videoFilename'] = video.name;
-      body['videoContentType'] = _inferVideoContentType(video.name);
+      presignedBody['videoFilename'] = video.name;
+      presignedBody['videoContentType'] = _inferVideoContentType(video.name);
     }
 
     final urlsResponse = await getNetworkCaller().postRequest(
       url: Urls.courseAssetsUploadUrl,
-      body: body,
+      body: presignedBody,
     );
 
     if (!urlsResponse.isSuccess) {
-      ToastService.showError('Failed to get upload URL');
-      return {};
+      AppLogger.w('uploadEditAssets: POST failed — code=${urlsResponse.responseCode}, error=${urlsResponse.errorMessage}, data=${urlsResponse.responseData}');
+      ToastService.showError(urlsResponse.errorMessage ?? 'Failed to get upload URL');
+      return false;
     }
 
     final raw = urlsResponse.responseData;
     final wrapper = raw is Map ? raw['data'] : null;
     final innerData = wrapper is Map ? wrapper['data'] ?? wrapper : wrapper;
-    if (innerData is! Map<String, dynamic>) return {};
+    if (innerData is! Map<String, dynamic>) {
+      ToastService.showError('Invalid server response');
+      return false;
+    }
 
-    final result = <String, String?>{};
-
+    // Collect upload info for background processing
+    final uploads = <_PendingUpload>[];
     if (thumbnail != null) {
       final info = innerData['thumbnail'] as Map<String, dynamic>?;
       final uploadUrl = info?['uploadUrl'] as String?;
       final fileUrl = info?['fileUrl'] as String?;
       if (uploadUrl != null && fileUrl != null) {
-        ToastService.showInfo('Uploading thumbnail...');
-        await _directUploadToS3(uploadUrl, thumbnail, _inferImageContentType(thumbnail.name));
-        ToastService.showSuccess('Thumbnail uploaded');
-        result['thumbnailUrl'] = fileUrl;
+        callbackBody['thumbnailUrl'] = fileUrl;
+        uploads.add(_PendingUpload(
+          file: thumbnail,
+          uploadUrl: uploadUrl,
+          contentType: _inferImageContentType(thumbnail.name),
+        ));
       }
     }
 
@@ -205,14 +215,73 @@ class CourseUploadProvider extends ChangeNotifier {
       final uploadUrl = info?['uploadUrl'] as String?;
       final fileUrl = info?['fileUrl'] as String?;
       if (uploadUrl != null && fileUrl != null) {
-        ToastService.showInfo('Uploading intro video...');
-        await _directUploadToS3(uploadUrl, video, _inferVideoContentType(video.name));
-        ToastService.showSuccess('Intro video uploaded');
-        result['introVideoUrl'] = fileUrl;
+        callbackBody['introVideoUrl'] = fileUrl;
+        uploads.add(_PendingUpload(
+          file: video,
+          uploadUrl: uploadUrl,
+          contentType: _inferVideoContentType(video.name),
+        ));
       }
     }
 
-    return result;
+    if (uploads.isEmpty) {
+      ToastService.showError('Failed to get upload URLs');
+      return false;
+    }
+
+    ToastService.showSuccess('Course update queued');
+
+    // Fire off background upload + PUT /course — sheet pops immediately
+    unawaited(_completeUploadEdit(
+      uploads: uploads,
+      callbackBody: Map<String, dynamic>.from(callbackBody),
+      courseId: courseId,
+      onCourseUpdated: onCourseUpdated,
+    ));
+    return true;
+  }
+
+  Future<void> _completeUploadEdit({
+    required List<_PendingUpload> uploads,
+    required Map<String, dynamic> callbackBody,
+    required int courseId,
+    VoidCallback? onCourseUpdated,
+  }) async {
+    try {
+      // Step 2: Upload files to S3
+      for (final upload in uploads) {
+        await _directUploadToS3(upload.uploadUrl, upload.file, upload.contentType);
+      }
+
+      // Step 3: PUT /course
+      final response = await getNetworkCaller().putRequest(
+        url: Urls.updateCourseUrl,
+        body: callbackBody,
+      );
+
+      if (response.isSuccess) {
+        onCourseUpdated?.call();
+        ToastService.showSuccess('Course updated successfully');
+      } else {
+        AppLogger.w('_completeUploadEdit: PUT /course failed — ${response.errorMessage}');
+        ToastService.showError(response.errorMessage ?? 'Failed to update course');
+      }
+    } catch (e) {
+      AppLogger.e('_completeUploadEdit: error — $e');
+      ToastService.showError('Failed to update course: $e');
+    }
+  }
+
+  Future<void> _directUploadToS3(String url, XFile file, String contentType) async {
+    final bytes = await file.readAsBytes();
+    final response = await http.put(
+      Uri.parse(url),
+      headers: {'Content-Type': contentType},
+      body: bytes,
+    ).timeout(const Duration(minutes: 5));
+    if (response.statusCode != 200) {
+      throw HttpException('Upload failed: ${response.statusCode}');
+    }
   }
 
   Future<bool> uploadCourse({
@@ -471,18 +540,6 @@ class CourseUploadProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _directUploadToS3(String url, XFile file, String contentType) async {
-    final bytes = await file.readAsBytes();
-    final response = await http.put(
-      Uri.parse(url),
-      headers: {'Content-Type': contentType},
-      body: bytes,
-    ).timeout(const Duration(minutes: 5));
-    if (response.statusCode != 200) {
-      throw HttpException('Upload failed: ${response.statusCode}');
-    }
-  }
-
   String _inferImageContentType(String filename) {
     final ext = filename.split('.').last.toLowerCase();
     switch (ext) {
@@ -504,4 +561,16 @@ class CourseUploadProvider extends ChangeNotifier {
       default: return 'video/mp4';
     }
   }
+}
+
+class _PendingUpload {
+  final XFile file;
+  final String uploadUrl;
+  final String contentType;
+
+  const _PendingUpload({
+    required this.file,
+    required this.uploadUrl,
+    required this.contentType,
+  });
 }

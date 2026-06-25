@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
+import 'package:edtech/global/core/services/logger_service.dart';
+import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
 import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
@@ -18,6 +20,7 @@ class ManageModuleEditCourseSheet extends StatefulWidget {
   final String courseType;
   final double coursePrice;
   final Future<bool> Function(Map<String, dynamic> body) onSave;
+  final VoidCallback onCourseRefreshed;
 
   const ManageModuleEditCourseSheet({
     super.key,
@@ -31,6 +34,7 @@ class ManageModuleEditCourseSheet extends StatefulWidget {
     required this.courseType,
     required this.coursePrice,
     required this.onSave,
+    required this.onCourseRefreshed,
   });
 
   static Future<void> show(
@@ -45,6 +49,7 @@ class ManageModuleEditCourseSheet extends StatefulWidget {
     required String courseType,
     required double coursePrice,
     required Future<bool> Function(Map<String, dynamic> body) onSave,
+    required VoidCallback onCourseRefreshed,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -66,6 +71,7 @@ class ManageModuleEditCourseSheet extends StatefulWidget {
         courseType: courseType,
         coursePrice: coursePrice,
         onSave: onSave,
+        onCourseRefreshed: onCourseRefreshed,
       ),
     );
   }
@@ -126,55 +132,61 @@ class _ManageModuleEditCourseSheetState
   }
 
   Future<void> _handleSave() async {
-    if (_nothingChanged()) {
-      Navigator.of(context).pop();
-      return;
-    }
-    final body = <String, dynamic>{
-      'courseId': widget.courseId,
-    };
-
-    if (_titleCtrl.text.trim().isNotEmpty) {
-      body['title'] = _titleCtrl.text.trim();
-    }
-    if (_shortDescCtrl.text.trim().isNotEmpty) {
-      body['shortDescription'] = _shortDescCtrl.text.trim();
-    }
-    if (_descCtrl.text.trim().isNotEmpty) {
-      body['description'] = _descCtrl.text.trim();
-    }
-    if (_reqCtrl.text.trim().isNotEmpty) {
-      body['requirements'] = _reqCtrl.text.trim();
-    }
-    body['language'] = _language;
-    body['level'] = _level;
-    body['type'] = _type;
-    final price = int.tryParse(_priceCtrl.text.trim());
-    body['price'] = _type == 'FREE' ? 0 : (price ?? 0);
-
-    final uploadProvider = context.read<CourseUploadProvider>();
-    final thumbnail = uploadProvider.thumbnailFile;
-    final video = uploadProvider.videoFile;
-
-    if (thumbnail != null || video != null) {
-      final urls = await uploadProvider.uploadEditAssets(
-        thumbnail: thumbnail,
-        video: video,
-      );
-      if (urls['thumbnailUrl'] != null) {
-        body['thumbnailUrl'] = urls['thumbnailUrl'];
+    try {
+      if (_nothingChanged()) {
+        Navigator.of(context).pop();
+        return;
       }
-      if (urls['introVideoUrl'] != null) {
-        body['introVideoUrl'] = urls['introVideoUrl'];
+      final body = <String, dynamic>{
+        'courseId': widget.courseId,
+      };
+
+      if (_titleCtrl.text.trim().isNotEmpty) {
+        body['title'] = _titleCtrl.text.trim();
       }
-    }
+      if (_shortDescCtrl.text.trim().isNotEmpty) {
+        body['shortDescription'] = _shortDescCtrl.text.trim();
+      }
+      if (_descCtrl.text.trim().isNotEmpty) {
+        body['description'] = _descCtrl.text.trim();
+      }
+      if (_reqCtrl.text.trim().isNotEmpty) {
+        body['requirements'] = _reqCtrl.text.trim();
+      }
+      body['language'] = _language;
+      body['level'] = _level;
+      body['type'] = _type;
+      final price = int.tryParse(_priceCtrl.text.trim());
+      body['price'] = _type == 'FREE' ? 0 : (price ?? 0);
 
-    setState(() => _saving = true);
-    final success = await widget.onSave(body);
-    setState(() => _saving = false);
+      final uploadProvider = context.read<CourseUploadProvider>();
+      final thumbnail = uploadProvider.thumbnailFile;
+      final video = uploadProvider.videoFile;
 
-    if (success && mounted) {
-      Navigator.of(context).pop();
+      if (thumbnail != null || video != null) {
+        final ok = await uploadProvider.uploadEditAssets(
+          thumbnail: thumbnail,
+          video: video,
+          callbackBody: body,
+          courseId: widget.courseId,
+          onCourseUpdated: widget.onCourseRefreshed,
+        );
+        if (!ok) return;
+      } else {
+        setState(() => _saving = true);
+        await widget.onSave(body);
+        setState(() => _saving = false);
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      AppLogger.e('_handleSave error: $e');
+      if (mounted) {
+        setState(() => _saving = false);
+        ToastService.showError('Failed to save: $e');
+      }
     }
   }
 

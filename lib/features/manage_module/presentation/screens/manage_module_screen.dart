@@ -109,6 +109,7 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                           courseType: provider.courseType,
                           coursePrice: provider.coursePrice,
                           onSave: provider.updateCourse,
+                          onCourseRefreshed: provider.refresh,
                         ),
                       ),
                       ManageModuleMeta(
@@ -205,6 +206,7 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                     index,
                                     title,
                                     file,
+                                    queueProvider: context.read<UnifiedUploadQueueProvider>(),
                                   ),
                             ),
                         onReorderLesson: provider.reorderLesson,

@@ -6,7 +6,7 @@ class Lesson {
   final String duration;
   final LessonType type;
   String? videoUrl;
-  final String? fileUrl;
+  String? fileUrl;
   final String? fileType;
   double uploadProgress;
   String uploadStatus;

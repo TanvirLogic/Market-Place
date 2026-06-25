@@ -96,7 +96,7 @@ Future<void> _recoverPendingUploads() async {
 Future<void> _recoverNativeOrphans() async {
   try {
     final nativeItems = await NativeUploadBridge.getPendingUploads();
-    if (nativeItems.isEmpty) return;
+    final hadNativeState = nativeItems.isNotEmpty;
 
     int recovered = 0;
     int completed = 0;
@@ -174,6 +174,20 @@ Future<void> _recoverNativeOrphans() async {
     // Only clear native state if nothing is still actively uploading.
     if (!hasStillUploading) {
       await NativeUploadBridge.clearState();
+
+      // If native state had no items (was already cleared by native's finally
+      // block after completing all uploads), any 'uploading' items left in
+      // SQLite with fileUrl set were completed successfully. Mark them
+      // 'completed' to prevent Phase 3 from resetting them to 'pending'
+      // and causing re-upload duplicates on next app start.
+      if (!hadNativeState) {
+        final stillUploading = await UploadQueueRepository.getByStatus('uploading');
+        for (final item in stillUploading) {
+          if (item.fileUrl != null && item.fileUrl!.isNotEmpty) {
+            await UploadQueueRepository.markCompleted(item.id!);
+          }
+        }
+      }
     }
 
     if (recovered > 0) {
@@ -200,8 +214,6 @@ Future<void> _clearStaleLocks() async {
   }
 }
 
-/// Phase 4: Auto-resume the queue if there are pending items.
-///
 /// Always syncs from SQLite (correct IDs + uploadUrls) and starts the
 /// native service. The native service ignores duplicate start intents
 /// if it's already processing, so this is safe to call even when running.
