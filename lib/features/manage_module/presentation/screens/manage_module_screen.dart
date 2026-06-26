@@ -83,190 +83,211 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
             context.read<VideoPlayerProvider>().dismiss();
           },
           child: Scaffold(
-          body: Stack(
-            children: [
-              Positioned.fill(
-                child: RefreshIndicator(
-                  onRefresh: provider.refresh,
-                  child: provider.isLoading
-                      ? const ManageModuleShimmer()
-                      : SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 100),
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ManageModuleHeader(
-                        cs: cs,
-                        iconBg: iconBg,
-                        thumbnailUrl: provider.courseThumbnailUrl,
-                        onEditCourse: () => ManageModuleEditCourseSheet.show(
-                          context,
-                          courseId: provider.courseId,
-                          courseTitle: provider.courseTitle,
-                          courseShortDescription: provider.courseShortDescription,
-                          courseDescription: provider.courseDescription,
-                          courseRequirements: provider.courseRequirements,
-                          courseLanguage: provider.courseLanguage,
-                          courseLevel: provider.courseLevel,
-                          courseType: provider.courseType,
-                          coursePrice: provider.coursePrice,
-                          courseThumbnailUrl: provider.courseThumbnailUrl,
-                          courseIntroVideoUrl: provider.courseIntroVideoUrl,
-                          onSave: provider.updateCourse,
-                          onCourseRefreshed: provider.refresh,
-                        ),
-                      ),
-                      ManageModuleMeta(
-                        title: provider.courseTitle,
-                        shortDescription: provider.courseShortDescription,
-                        language: provider.courseLanguage,
-                        level: provider.courseLevel,
-                        type: provider.courseType,
-                      ),
-                      ManageModuleDescription(
-                        title: "Description",
-                        text: provider.courseDescription,
-                      ),
-                      ManageModuleDescription(
-                        title: "Requirements",
-                        text: provider.courseRequirements,
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Divider(
-                          color: const Color(0xFFE3E3E4),
-                          thickness: 1.0,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          "Swipe left to delete or edit",
-                          style: TextStyle(
-                            color: cs.onSurface.withValues(alpha: 0.4),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ManageModuleList(
-                        modules: provider.modules,
-                        isDark: isDark,
-                        cs: cs,
-                        revealNotifier: _revealNotifier,
-                        resetNotifier: _resetNotifier,
-                        onReorder: provider.reorderModule,
-                        onDeleteModule: (module, index) async {
-                          final confirmed = await AppAlertDialog.show(
-                            context: context,
-                            title: 'Delete Module',
-                            content: 'Delete "${module.title}"?',
-                            confirmText: 'Delete',
-                            cancelText: 'Cancel',
-                          );
-                          if (confirmed == true) {
-                            return provider.deleteModule(module);
-                          }
-                          return false;
-                        },
-                        onEditModule: (module) =>
-                            ManageModuleEditModuleSheet.show(
-                              context,
-                              module: module,
-                              onSave: (title) async {
-                                final success = await provider.editModule(
-                                  module,
-                                  title,
-                                );
-                                if (success) _resetNotifier.value++;
-                                return success;
-                              },
-                            ),
-                        onToggleExpand: provider.toggleExpand,
-                        onRename: provider.renameModule,
-                        onShowRenameDialog: _showRenameDialog,
-                        onAddVideo: (index) => ManageModuleAddLessonSheet.show(
-                          context,
-                          lessonType: LessonType.video,
-                          moduleId: provider.modules[index].id,
-                          courseId: provider.courseId,
-                          onAddLesson: (title, file, _) =>
-                              provider.addVideoLesson(
-                                index,
-                                title,
-                                file,
-                                queueProvider: context.read<UnifiedUploadQueueProvider>(),
-                              ),
-                        ),
-                        onAddResource: (index) =>
-                            ManageModuleAddLessonSheet.show(
-                              context,
-                              lessonType: LessonType.resource,
-                              moduleId: provider.modules[index].id,
-                              courseId: provider.courseId,
-                              onAddLesson: (title, file, _) =>
-                                  provider.addResourceLesson(
-                                    index,
-                                    title,
-                                    file,
-                                    queueProvider: context.read<UnifiedUploadQueueProvider>(),
+            body: Stack(
+              children: [
+                Positioned.fill(
+                  child: RefreshIndicator(
+                    onRefresh: provider.refresh,
+                    child: provider.isLoading
+                        ? const ManageModuleShimmer()
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.only(bottom: 100),
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ManageModuleHeader(
+                                  cs: cs,
+                                  iconBg: iconBg,
+                                  thumbnailUrl: provider.courseThumbnailUrl,
+                                  onEditCourse: () =>
+                                      ManageModuleEditCourseSheet.show(
+                                        context,
+                                        courseId: provider.courseId,
+                                        courseTitle: provider.courseTitle,
+                                        courseShortDescription:
+                                            provider.courseShortDescription,
+                                        courseDescription:
+                                            provider.courseDescription,
+                                        courseRequirements:
+                                            provider.courseRequirements,
+                                        courseLanguage: provider.courseLanguage,
+                                        courseLevel: provider.courseLevel,
+                                        courseType: provider.courseType,
+                                        coursePrice: provider.coursePrice,
+                                        courseThumbnailUrl:
+                                            provider.courseThumbnailUrl,
+                                        courseIntroVideoUrl:
+                                            provider.courseIntroVideoUrl,
+                                        onSave: provider.updateCourse,
+                                        onCourseRefreshed: provider.refresh,
+                                      ),
+                                ),
+                                ManageModuleMeta(
+                                  title: provider.courseTitle,
+                                  shortDescription:
+                                      provider.courseShortDescription,
+                                  language: provider.courseLanguage,
+                                  level: provider.courseLevel,
+                                  type: provider.courseType,
+                                ),
+                                ManageModuleDescription(
+                                  title: "Description",
+                                  text: provider.courseDescription,
+                                ),
+                                ManageModuleDescription(
+                                  title: "Requirements",
+                                  text: provider.courseRequirements,
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0,
                                   ),
+                                  child: Divider(
+                                    color: const Color(0xFFE3E3E4),
+                                    thickness: 1.0,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: Text(
+                                    "Swipe left to delete or edit",
+                                    style: TextStyle(
+                                      color: cs.onSurface.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ManageModuleList(
+                                  modules: provider.modules,
+                                  isDark: isDark,
+                                  cs: cs,
+                                  revealNotifier: _revealNotifier,
+                                  resetNotifier: _resetNotifier,
+                                  onReorder: provider.reorderModule,
+                                  onDeleteModule: (module, index) async {
+                                    final confirmed = await AppAlertDialog.show(
+                                      context: context,
+                                      title: 'Delete Module',
+                                      content: 'Delete "${module.title}"?',
+                                      confirmText: 'Delete',
+                                      cancelText: 'Cancel',
+                                    );
+                                    if (confirmed == true) {
+                                      return provider.deleteModule(module);
+                                    }
+                                    return false;
+                                  },
+                                  onEditModule: (module) =>
+                                      ManageModuleEditModuleSheet.show(
+                                        context,
+                                        module: module,
+                                        onSave: (title) async {
+                                          final success = await provider
+                                              .editModule(module, title);
+                                          if (success) _resetNotifier.value++;
+                                          return success;
+                                        },
+                                      ),
+                                  onToggleExpand: provider.toggleExpand,
+                                  onRename: provider.renameModule,
+                                  onShowRenameDialog: _showRenameDialog,
+                                  onAddVideo: (index) =>
+                                      ManageModuleAddLessonSheet.show(
+                                        context,
+                                        lessonType: LessonType.video,
+                                        moduleId: provider.modules[index].id,
+                                        courseId: provider.courseId,
+                                        onAddLesson: (title, file, _) =>
+                                            provider.addVideoLesson(
+                                              index,
+                                              title,
+                                              file,
+                                              queueProvider: context
+                                                  .read<
+                                                    UnifiedUploadQueueProvider
+                                                  >(),
+                                            ),
+                                      ),
+                                  onAddResource: (index) =>
+                                      ManageModuleAddLessonSheet.show(
+                                        context,
+                                        lessonType: LessonType.resource,
+                                        moduleId: provider.modules[index].id,
+                                        courseId: provider.courseId,
+                                        onAddLesson: (title, file, _) =>
+                                            provider.addResourceLesson(
+                                              index,
+                                              title,
+                                              file,
+                                              queueProvider: context
+                                                  .read<
+                                                    UnifiedUploadQueueProvider
+                                                  >(),
+                                            ),
+                                      ),
+                                  onReorderLesson: provider.reorderLesson,
+                                  onRenameLesson: provider.renameLesson,
+                                  onDeleteLesson: provider.deleteLesson,
+                                  onEditLesson: (module, lessonIndex) {
+                                    final lesson = module.lessons[lessonIndex];
+                                    ManageModuleEditLessonSheet.show(
+                                      context,
+                                      lesson: lesson,
+                                      onSave: (title) => provider.renameLesson(
+                                        module,
+                                        lessonIndex,
+                                        title,
+                                      ),
+                                    );
+                                  },
+                                  onTapVideo: (videoUrl, title) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => VideoPlayerScreen(
+                                          videoUrl: videoUrl,
+                                          title: title,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  onTapResource: (fileUrl, title) {
+                                    launchUrl(
+                                      Uri.parse(fileUrl),
+                                      mode: LaunchMode.externalApplication,
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
-                        onReorderLesson: provider.reorderLesson,
-                        onRenameLesson: provider.renameLesson,
-                        onDeleteLesson: provider.deleteLesson,
-                        onEditLesson: (module, lessonIndex) {
-                          final lesson = module.lessons[lessonIndex];
-                          ManageModuleEditLessonSheet.show(
-                            context,
-                            lesson: lesson,
-                            onSave: (title) => provider.renameLesson(
-                              module,
-                              lessonIndex,
-                              title,
-                            ),
-                          );
-                        },
-                        onTapVideo: (videoUrl, title) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => VideoPlayerScreen(
-                                videoUrl: videoUrl,
-                                title: title,
-                              ),
-                            ),
-                          );
-                        },
-                        onTapResource: (fileUrl, title) {
-                          launchUrl(Uri.parse(fileUrl), mode: LaunchMode.externalApplication);
-                        },
-                      ),
-                    ],
+                          ),
                   ),
                 ),
-              ),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: ManageModuleBottomBar(
+                    onAddModule: () => ManageModuleAddModuleSheet.show(
+                      context,
+                      onAddModule: provider.addModule,
+                    ),
+                    onPublish: () {
+                      _resetNotifier.value++;
+                      provider.saveOrder();
+                    },
+                  ),
+                ),
+              ],
             ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: ManageModuleBottomBar(
-                  onAddModule: () => ManageModuleAddModuleSheet.show(
-                    context,
-                    onAddModule: provider.addModule,
-                  ),
-                  onPublish: () {
-                    _resetNotifier.value++;
-                    provider.saveOrder();
-                  },
-                ),
-              ),
-            ],
           ),
-        ),
         );
       },
     );

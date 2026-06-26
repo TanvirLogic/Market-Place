@@ -35,9 +35,7 @@ class VideoPlayerProvider extends ChangeNotifier {
 
   VideoPlayerProvider() {
     _player = Player(
-      configuration: const PlayerConfiguration(
-        bufferSize: 64 * 1024 * 1024,
-      ),
+      configuration: const PlayerConfiguration(bufferSize: 64 * 1024 * 1024),
     );
     _videoController = VideoController(_player);
     _initStreams();
@@ -152,10 +150,7 @@ class VideoPlayerProvider extends ChangeNotifier {
     try {
       await getNetworkCaller().postRequest(
         url: '${Urls.courseLessonUrl}/complete',
-        body: {
-          'lessonId': lessonId,
-          if (cid != null) 'courseId': cid,
-        },
+        body: {'lessonId': lessonId, if (cid != null) 'courseId': cid},
       );
     } catch (_) {}
   }

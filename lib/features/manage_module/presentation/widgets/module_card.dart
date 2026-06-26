@@ -248,6 +248,7 @@ class _LessonSwipeRowState extends State<_LessonSwipeRow> {
     final cs = Theme.of(context).colorScheme;
     final lesson = widget.lesson;
     final lessonIndex = widget.lessonIndex;
+    final isUploading = lesson.uploadStatus == 'pending' || lesson.uploadStatus == 'uploading';
 
     return SwipeActionWidget(
       revealNotifier: _revealNotifier,
@@ -258,7 +259,7 @@ class _LessonSwipeRowState extends State<_LessonSwipeRow> {
         colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
       ),
       resetNotifier: widget.resetNotifier,
-      onDelete: () async {
+      onDelete: isUploading ? null : () async {
         final confirmed = await AppAlertDialog.show(
           context: context,
           title: 'Delete Lesson',
@@ -271,7 +272,7 @@ class _LessonSwipeRowState extends State<_LessonSwipeRow> {
         }
         return false;
       },
-      onEdit: () => widget.onEditLesson(widget.lessonIndex),
+      onEdit: isUploading ? null : () => widget.onEditLesson(widget.lessonIndex),
       child: ListenableBuilder(
         listenable: _revealNotifier,
         builder: (context, _) {

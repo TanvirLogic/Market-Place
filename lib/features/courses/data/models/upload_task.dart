@@ -87,12 +87,14 @@ class ModuleLessonMetadata {
   final int courseId;
   final String lessonTitle;
   final String? contentType;
+  final int? lessonId;
 
   const ModuleLessonMetadata({
     required this.moduleId,
     required this.courseId,
     required this.lessonTitle,
     this.contentType,
+    this.lessonId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -100,6 +102,7 @@ class ModuleLessonMetadata {
     'courseId': courseId,
     'lessonTitle': lessonTitle,
     'contentType': contentType,
+    if (lessonId != null) 'lessonId': lessonId,
   };
 
   factory ModuleLessonMetadata.fromJson(Map<String, dynamic> json) =>
@@ -108,6 +111,7 @@ class ModuleLessonMetadata {
         courseId: json['courseId'] as int,
         lessonTitle: json['lessonTitle'] as String,
         contentType: json['contentType'] as String?,
+        lessonId: json['lessonId'] as int?,
       );
 }
 

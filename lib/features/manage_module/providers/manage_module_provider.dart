@@ -96,36 +96,44 @@ class ManageModuleProvider extends ChangeNotifier {
         final modulesList = data['modules'] as List? ?? [];
         _modules.clear();
         for (final item in modulesList) {
-          final lessons = (item['lessons'] as List?)?.map((l) {
-            final lessonId = l['id'] as int? ?? _nextLessonId++;
-            final video = l['video'] as Map?;
-            final duration = video?['duration'] as int? ?? l['duration'] as int?;
-            final videoUrl = l['videoUrl'] as String?
-                ?? video?['videoUrl'] as String?
-                ?? video?['url'] as String?
-                ?? video?['fileUrl'] as String?
-                ?? l['fileUrl'] as String?
-                ?? l['url'] as String?
-                ?? _videoUrlCache[lessonId];
-            if (videoUrl != null) _videoUrlCache[lessonId] = videoUrl;
-            return Lesson(
-              id: lessonId,
-              title: l['title'] as String? ?? '',
-              duration: duration != null ? _formatDuration(duration) : '0:00',
-              type: LessonType.video,
-              videoUrl: videoUrl,
-            );
-          }).toList() ?? [];
-          final resources = (item['resources'] as List?)?.map((r) {
-            return Lesson(
-              id: r['id'] as int? ?? _nextLessonId++,
-              title: r['title'] as String? ?? '',
-              duration: '',
-              type: LessonType.resource,
-              fileUrl: r['fileUrl'] as String?,
-              fileType: r['fileType'] as String?,
-            );
-          }).toList() ?? [];
+          final lessons =
+              (item['lessons'] as List?)?.map((l) {
+                final lessonId = l['id'] as int? ?? _nextLessonId++;
+                final video = l['video'] as Map?;
+                final duration =
+                    video?['duration'] as int? ?? l['duration'] as int?;
+                final videoUrl =
+                    l['videoUrl'] as String? ??
+                    video?['videoUrl'] as String? ??
+                    video?['url'] as String? ??
+                    video?['fileUrl'] as String? ??
+                    l['fileUrl'] as String? ??
+                    l['url'] as String? ??
+                    _videoUrlCache[lessonId];
+                if (videoUrl != null) _videoUrlCache[lessonId] = videoUrl;
+                return Lesson(
+                  id: lessonId,
+                  title: l['title'] as String? ?? '',
+                  duration: duration != null
+                      ? _formatDuration(duration)
+                      : '0:00',
+                  type: LessonType.video,
+                  videoUrl: videoUrl,
+                );
+              }).toList() ??
+              [];
+          final resources =
+              (item['resources'] as List?)?.map((r) {
+                return Lesson(
+                  id: r['id'] as int? ?? _nextLessonId++,
+                  title: r['title'] as String? ?? '',
+                  duration: '',
+                  type: LessonType.resource,
+                  fileUrl: r['fileUrl'] as String?,
+                  fileType: r['fileType'] as String?,
+                );
+              }).toList() ??
+              [];
           _modules.add(
             CourseModule(
               id: item['id'] as int? ?? _nextModuleId++,
@@ -147,72 +155,60 @@ class ManageModuleProvider extends ChangeNotifier {
   Future<void> _restorePendingUploads() async {
     try {
       final allItems = await UploadQueueRepository.getActive();
-      final lessonItems = allItems.where((i) => i.uploadType == 'module_lesson' || i.uploadType == 'resource').toList();
+      final lessonItems = allItems
+          .where(
+            (i) =>
+                i.uploadType == 'module_lesson' || i.uploadType == 'resource',
+          )
+          .toList();
       if (lessonItems.isEmpty) return;
-
-      final nativeData = await NativeUploadBridge.getQueueItems();
-      final nativeItems =
-          (nativeData['items'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
-              [];
 
       bool hasUpdates = false;
 
       for (final item in lessonItems) {
         final meta = item.parseMetadata(ModuleLessonMetadata.fromJson);
         if (meta == null) {
-          AppLogger.w('_restorePendingUploads: could not parse metadata for item ${item.id}');
+          AppLogger.w(
+            '_restorePendingUploads: could not parse metadata for item ${item.id}',
+          );
           continue;
         }
         if (meta.courseId != courseId) continue;
 
         final moduleIndex = _modules.indexWhere((m) => m.id == meta.moduleId);
         if (moduleIndex < 0) {
-          AppLogger.w('_restorePendingUploads: module ${meta.moduleId} not found for item ${item.id}');
+          AppLogger.w(
+            '_restorePendingUploads: module ${meta.moduleId} not found for item ${item.id}',
+          );
           continue;
         }
 
         final module = _modules[moduleIndex];
-        final alreadyExists = module.lessons.any(
-          (l) => l.title == meta.lessonTitle,
-        );
+
+        // Use lessonId from metadata if available; fall back to title match
+        final restoredLessonId = meta.lessonId;
+        final alreadyExists = restoredLessonId != null
+            ? module.lessons.any((l) => l.id == restoredLessonId)
+            : module.lessons.any((l) => l.title == meta.lessonTitle);
         if (alreadyExists) continue;
 
-        // Match native item by ID first, then by filePath as fallback
-        // (after recovery, IDs may have been regenerated differently)
-        Map<String, dynamic>? nativeItem;
-        for (final n in nativeItems) {
-          if (n['id'] == item.id) {
-            nativeItem = n;
-            break;
-          }
-        }
-        if (nativeItem == null) {
-          for (final n in nativeItems) {
-            if (n['filePath'] == item.filePath) {
-              nativeItem = n;
-              break;
-            }
-          }
-        }
-
-        final progress =
-            ((nativeItem?['progress'] as num?)?.toDouble() ?? 0.0) / 100.0;
-        final status = nativeItem?['status'] as String? ?? item.status;
-        final fileUrl = nativeItem?['fileUrl'] as String? ?? item.fileUrl;
-
         final isResource = item.uploadType == 'resource';
-        AppLogger.i('_restorePendingUploads: restoring ${isResource ? "resource" : "lesson"} "${meta.lessonTitle}" — status=$status, progress=$progress');
+        AppLogger.i(
+          '_restorePendingUploads: restoring ${isResource ? "resource" : "lesson"} "${meta.lessonTitle}" (lessonId=$restoredLessonId)',
+        );
 
-        final lessonId = _nextLessonId++;
+        final lessonId = restoredLessonId ?? _nextLessonId++;
+        if (restoredLessonId != null && restoredLessonId >= _nextLessonId) {
+          _nextLessonId = lessonId + 1;
+        }
+
         final lesson = Lesson(
           id: lessonId,
           title: meta.lessonTitle,
           duration: '0:00',
           type: isResource ? LessonType.resource : LessonType.video,
-          uploadProgress: progress,
-          uploadStatus: status,
-          videoUrl: isResource ? null : fileUrl,
-          fileUrl: isResource ? fileUrl : null,
+          uploadProgress: 0.0,
+          uploadStatus: 'pending',
         );
 
         module.lessons.add(lesson);
@@ -402,7 +398,9 @@ class ManageModuleProvider extends ChangeNotifier {
     final lesson = module.lessons[lessonIndex];
     final isResource = lesson.type == LessonType.resource;
     final response = await getNetworkCaller().putRequest(
-      url: isResource ? Urls.courseModuleResourceUrl : Urls.courseModuleLessonUrl,
+      url: isResource
+          ? Urls.courseModuleResourceUrl
+          : Urls.courseModuleLessonUrl,
       body: isResource
           ? {'resourceId': lesson.id, 'title': newName}
           : {'lessonId': lesson.id, 'title': newName},
@@ -410,12 +408,14 @@ class ManageModuleProvider extends ChangeNotifier {
     if (response.isSuccess) {
       module.lessons[lessonIndex].title = newName;
       notifyListeners();
-      ToastService.showSuccess(isResource ? 'Resource updated successfully' : 'Lesson renamed successfully');
+      ToastService.showSuccess(
+        isResource
+            ? 'Resource updated successfully'
+            : 'Lesson renamed successfully',
+      );
       return true;
     } else {
-      ToastService.showError(
-        response.errorMessage ?? 'Failed to rename',
-      );
+      ToastService.showError(response.errorMessage ?? 'Failed to rename');
       return false;
     }
   }
@@ -424,18 +424,22 @@ class ManageModuleProvider extends ChangeNotifier {
     final lesson = module.lessons[lessonIndex];
     final isResource = lesson.type == LessonType.resource;
     final response = await getNetworkCaller().deleteRequest(
-      url: isResource ? Urls.courseModuleResourceUrl : Urls.courseModuleLessonUrl,
+      url: isResource
+          ? Urls.courseModuleResourceUrl
+          : Urls.courseModuleLessonUrl,
       body: isResource ? {'resourceId': lesson.id} : {'lessonId': lesson.id},
     );
     if (response.isSuccess) {
       module.lessons.removeAt(lessonIndex);
       notifyListeners();
-      ToastService.showSuccess(isResource ? 'Resource deleted successfully' : 'Lesson deleted successfully');
+      ToastService.showSuccess(
+        isResource
+            ? 'Resource deleted successfully'
+            : 'Lesson deleted successfully',
+      );
       return true;
     } else {
-      ToastService.showError(
-        response.errorMessage ?? 'Failed to delete',
-      );
+      ToastService.showError(response.errorMessage ?? 'Failed to delete');
       return false;
     }
   }
@@ -467,6 +471,7 @@ class ManageModuleProvider extends ChangeNotifier {
         lessonTitle: title,
         moduleId: module.id,
         courseId: courseId,
+        lessonId: lessonId,
       );
       if (queueId <= 0) {
         lesson.uploadStatus = 'failed';
@@ -489,7 +494,7 @@ class ManageModuleProvider extends ChangeNotifier {
     _progressTimer?.cancel();
     int emptyNativeReads = 0;
 
-    _progressTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       try {
         final data = await NativeUploadBridge.getQueueItems();
         final items = data['items'] as List<dynamic>? ?? [];
@@ -500,7 +505,7 @@ class ManageModuleProvider extends ChangeNotifier {
         // Mark all queued lessons as completed using cached fileUrls.
         if (items.isEmpty && _queueItemToLesson.isNotEmpty) {
           emptyNativeReads++;
-          // Wait 2 cycles (4 seconds) to confirm native is truly gone
+          // Wait 2 cycles (~10 seconds) to confirm native is truly gone
           // before marking as completed (avoids false positive on slow reads)
           if (emptyNativeReads >= 2) {
             bool completedAny = false;
@@ -632,6 +637,7 @@ class ManageModuleProvider extends ChangeNotifier {
         moduleId: module.id,
         courseId: courseId,
         contentType: contentType,
+        lessonId: lessonId,
       );
       if (queueId <= 0) {
         lesson.uploadStatus = 'failed';
@@ -660,15 +666,22 @@ class ManageModuleProvider extends ChangeNotifier {
   String _inferResourceContentType(String filename) {
     final ext = filename.split('.').last.toLowerCase();
     switch (ext) {
-      case 'pdf': return 'application/pdf';
-      case 'doc': return 'application/msword';
-      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      case 'xls': return 'application/vnd.ms-excel';
-      case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      case 'ppt': return 'application/vnd.ms-powerpoint';
-      case 'pptx': return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-      default: return 'application/octet-stream';
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'ppt':
+        return 'application/vnd.ms-powerpoint';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      default:
+        return 'application/octet-stream';
     }
   }
-
 }

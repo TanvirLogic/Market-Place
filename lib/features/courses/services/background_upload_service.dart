@@ -62,6 +62,10 @@ class BackgroundUploadService {
             }
           }
         }
+        // Backoff on HTTP errors too (server 500s, etc.)
+        if (retry < maxRetries - 1) {
+          await Future.delayed(Duration(seconds: 2 * (retry + 1)));
+        }
       } on SocketException {
         await Future.delayed(Duration(seconds: 2 * (retry + 1)));
       } on http.ClientException {
@@ -200,6 +204,10 @@ class BackgroundUploadService {
           final innerData = outerData?['data'] as Map<String, dynamic>?;
 
           if (innerData == null) {
+            if (retry < maxRetries - 1) {
+              await Future.delayed(Duration(seconds: 2 * (retry + 1)));
+              continue;
+            }
             AppLogger.e('fetchCoursePresignedUrls: nested data is null');
             return null;
           }
@@ -211,6 +219,10 @@ class BackgroundUploadService {
           final thumbFileUrl = thumb?['fileUrl'] as String?;
 
           if (thumbUploadUrl == null || thumbFileUrl == null) {
+            if (retry < maxRetries - 1) {
+              await Future.delayed(Duration(seconds: 2 * (retry + 1)));
+              continue;
+            }
             AppLogger.e('fetchCoursePresignedUrls: thumbnail URLs missing');
             return null;
           }
@@ -222,6 +234,9 @@ class BackgroundUploadService {
             'videoFileUrl': video?['fileUrl'] as String?,
           };
         }
+        if (retry < maxRetries - 1) {
+          await Future.delayed(Duration(seconds: 2 * (retry + 1)));
+        }
       } on SocketException {
         await Future.delayed(Duration(seconds: 2 * (retry + 1)));
       } on http.ClientException {
@@ -232,20 +247,32 @@ class BackgroundUploadService {
     return null;
   }
 
-  /// Upload a file to S3 via presigned URL using HTTP PUT.
+  /// Upload a file to S3 via presigned URL using HTTP PUT with streaming.
+  /// Uses chunked streaming to avoid OOM on large files (3-4GB).
   static Future<bool> uploadFileToS3({
     required String filePath,
     required String uploadUrl,
     required String contentType,
+    Duration timeout = const Duration(minutes: 30),
+    void Function(double progress)? onProgress,
   }) async {
     try {
       final file = File(filePath);
-      final bytes = await file.readAsBytes();
-      final response = await http.put(
-        Uri.parse(uploadUrl),
-        headers: {'Content-Type': contentType},
-        body: bytes,
-      ).timeout(const Duration(minutes: 10));
+      final fileSize = await file.length();
+      final request = http.StreamedRequest('PUT', Uri.parse(uploadUrl));
+      request.headers['Content-Type'] = contentType;
+      request.contentLength = fileSize;
+
+      final stream = file.openRead();
+      int bytesSent = 0;
+      await for (final chunk in stream) {
+        request.sink.add(chunk);
+        bytesSent += chunk.length;
+        onProgress?.call(bytesSent / fileSize);
+      }
+      await request.sink.close();
+
+      final response = await request.send().timeout(timeout);
       return response.statusCode == 200;
     } catch (e) {
       AppLogger.e('uploadFileToS3 error: $e');

@@ -21,9 +21,7 @@ class NativeUploadBridge {
   /// which the :upload process can read even after app kill.
   static Future<bool> syncQueueToNative(String itemsJson) async {
     try {
-      await _channel.invokeMethod('syncQueueToNative', {
-        'itemsJson': itemsJson,
-      });
+      await _channel.invokeMethod('syncQueueToNative', itemsJson);
       return true;
     } catch (e) {
       AppLogger.w('syncQueueToNative failed — $e');

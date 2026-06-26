@@ -1,5 +1,6 @@
 package net.eduverseapp.platform
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,8 +8,11 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -17,11 +21,11 @@ import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
-import java.io.InputStream
-import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class UploadReschedulerService : Service() {
@@ -52,8 +56,7 @@ class UploadReschedulerService : Service() {
                 val itemId = intent.getLongExtra(EXTRA_ITEM_ID, -1L)
 
                 if (filePath != null && uploadUrl != null) {
-                    val notification = buildNotification("Starting: $title", 0, true)
-                    startForeground(NOTIFICATION_ID, notification)
+                    startForegroundSafe("Starting: $title", 0, true)
                     processQueue(queue = listOf(
                         PendingUpload(
                             id = itemId, filePath = filePath, title = title ?: "Upload",
@@ -70,9 +73,10 @@ class UploadReschedulerService : Service() {
             ACTION_PROCESS_QUEUE -> {
                 val state = UploadStateManager.load(this)
                 if (state != null && state.items.isNotEmpty()) {
-                    val notif = buildNotification("Resuming uploads...", 0, true)
-                    startForeground(NOTIFICATION_ID, notif)
-                    processQueue(state.items.toList())
+                    val items = state.items.sortedBy { it.id }
+                    if (startForegroundSafe("Resuming uploads...", 0, true)) {
+                        processQueue(items)
+                    }
                 } else {
                     stopSelf()
                 }
@@ -101,6 +105,49 @@ class UploadReschedulerService : Service() {
         super.onDestroy()
     }
 
+    private fun startForegroundSafe(text: String, progress: Int, indeterminate: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                val state = UploadStateManager.load(this)
+                state?.items?.forEach { item ->
+                    if (item.status == UploadConstants.STATUS_PENDING ||
+                        item.status == UploadConstants.STATUS_UPLOADING
+                    ) {
+                        UploadStateManager.markItemStatus(
+                            this, item.id,
+                            UploadConstants.STATUS_FAILED,
+                            "Notification permission required for background upload"
+                        )
+                    }
+                }
+                stopSelf()
+                return false
+            }
+        }
+        return try {
+            val notification = buildNotification(text, progress, indeterminate)
+            startForeground(NOTIFICATION_ID, notification)
+            true
+        } catch (e: SecurityException) {
+            val state = UploadStateManager.load(this)
+            state?.items?.forEach { item ->
+                if (item.status == UploadConstants.STATUS_PENDING ||
+                    item.status == UploadConstants.STATUS_UPLOADING
+                ) {
+                    UploadStateManager.markItemStatus(
+                        this, item.id,
+                        UploadConstants.STATUS_FAILED,
+                        "Failed to start foreground service: ${e.message}"
+                    )
+                }
+            }
+            stopSelf()
+            false
+        }
+    }
+
     private fun acquireLocks() {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
@@ -108,7 +155,7 @@ class UploadReschedulerService : Service() {
             "Eduverse:UploadWakeLock"
         ).apply {
             setReferenceCounted(false)
-            acquire(10 * 60 * 1000L)
+            acquire(60 * 60 * 1000L)
         }
 
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
@@ -174,15 +221,10 @@ class UploadReschedulerService : Service() {
             .build()
     }
 
-    /**
-     * Core sequential queue processor.
-     * For each item: S3 PUT upload → server API callback → mark completed.
-     * After the initial batch, checks for newly added pending items and continues.
-     */
     private fun processQueue(queue: List<PendingUpload>) {
         if (!isProcessing.compareAndSet(false, true)) return
 
-            executor.execute {
+        executor.execute {
             try {
                 var currentBatch = queue.toMutableList()
                 var completedCount = 0
@@ -196,7 +238,11 @@ class UploadReschedulerService : Service() {
 
                         if (!isNetworkAvailable()) {
                             showPersistentNotification("Waiting for network...", 0, true)
-                            waitForNetwork()
+                            if (!waitForNetwork()) {
+                                markItemFailed(item, "No network after waiting 5 minutes")
+                                index++
+                                continue
+                            }
                         }
 
                         val file = File(item.filePath)
@@ -213,7 +259,6 @@ class UploadReschedulerService : Service() {
                             continue
                         }
 
-                        // Mark as uploading
                         UploadStateManager.markItemStatus(this, item.id, UploadConstants.STATUS_UPLOADING)
                         persistCurrentState(currentBatch, index)
 
@@ -223,7 +268,6 @@ class UploadReschedulerService : Service() {
                         )
                         notificationManager.notify(NOTIFICATION_ID, notif)
 
-                        // Step 1: S3 PUT upload
                         val s3Success = performS3Upload(
                             file = file,
                             uploadUrl = uploadUrl,
@@ -242,7 +286,6 @@ class UploadReschedulerService : Service() {
                             continue
                         }
 
-                        // Step 2: Server API callback (create post/course/lesson/resource)
                         if (item.authToken != null && item.callbackUrl != null && item.callbackBody != null) {
                             val callbackSuccess = performServerCallback(item)
                             if (!callbackSuccess) {
@@ -262,11 +305,10 @@ class UploadReschedulerService : Service() {
 
                     completedCount += currentBatch.size
 
-                    // After current batch, check for newly added pending items
                     val state = UploadStateManager.load(this)
                     val newPending = state?.items?.filter {
                         it.status == UploadConstants.STATUS_PENDING
-                    } ?: break
+                    }?.sortedBy { it.id } ?: break
                     if (newPending.isEmpty()) break
                     currentBatch = newPending.toMutableList()
                 }
@@ -283,9 +325,6 @@ class UploadReschedulerService : Service() {
         }
     }
 
-    /**
-     * S3 PUT upload with chunked streaming and progress reporting.
-     */
     private fun performS3Upload(
         file: File,
         uploadUrl: String,
@@ -300,7 +339,6 @@ class UploadReschedulerService : Service() {
 
         for (attempt in 1..maxRetries) {
             var connection: HttpURLConnection? = null
-            var inputStream: InputStream? = null
             try {
                 val url = URL(uploadUrl)
                 connection = url.openConnection() as HttpURLConnection
@@ -309,40 +347,46 @@ class UploadReschedulerService : Service() {
                 connection.setRequestProperty("Content-Length", fileSize.toString())
                 connection.doOutput = true
                 connection.useCaches = false
-                connection.connectTimeout = 30000
-                connection.readTimeout = 30000
+                connection.connectTimeout = 60000
+                connection.readTimeout = 600000
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     connection.setFixedLengthStreamingMode(fileSize)
                 }
 
-                inputStream = FileInputStream(file)
-                val outputStream: OutputStream = connection.outputStream
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var totalRead = 0L
-                var lastProgress = -1
+                val outputStream = connection.outputStream
 
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    totalRead += bytesRead
-                    val progress = if (fileSize > 0) {
-                        ((totalRead * 100) / fileSize).toInt()
-                    } else 0
+                FileInputStream(file).use { inputStream ->
+                    val buffer = ByteArray(65536)
+                    var bytesRead: Int
+                    var totalRead = 0L
+                    var lastReportedProgress = -1
 
-                    if (progress != lastProgress) {
-                        lastProgress = progress
-                        // Write progress to state file for Dart polling
-                        if (itemId >= 0) {
-                            UploadStateManager.updateItemProgress(
-                                this@UploadReschedulerService, itemId, progress
-                            )
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        outputStream.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+                        val progress = if (fileSize > 0) {
+                            ((totalRead * 100) / fileSize).toInt()
+                        } else 0
+
+                        // Report progress on first chunk + every 5% thereafter
+                        // The first-chunk report ensures small files show some progress
+                        val shouldReport = lastReportedProgress < 0 ||
+                            progress >= lastReportedProgress + 5
+                        if (shouldReport) {
+                            lastReportedProgress = progress
+                            if (itemId >= 0) {
+                                UploadStateManager.updateItemProgress(
+                                    this@UploadReschedulerService, itemId, progress
+                                )
+                            }
+                            val label = "Uploading $title ($queueIndex/$queueTotal)"
+                            val notif = buildNotification(label, progress, false)
+                            notificationManager.notify(NOTIFICATION_ID, notif)
                         }
-                        val label = "Uploading $title ($queueIndex/$queueTotal)"
-                        val notif = buildNotification(label, progress, false)
-                        notificationManager.notify(NOTIFICATION_ID, notif)
                     }
                 }
+
                 outputStream.flush()
                 outputStream.close()
 
@@ -352,24 +396,21 @@ class UploadReschedulerService : Service() {
                 }
 
                 if (attempt < maxRetries) {
-                    Thread.sleep((attempt * 2000).toLong())
+                    val backoff = (attempt * 5000).toLong()
+                    Thread.sleep(backoff)
                 }
             } catch (e: Exception) {
                 if (attempt < maxRetries) {
-                    Thread.sleep((attempt * 2000).toLong())
+                    val backoff = (attempt * 5000).toLong()
+                    Thread.sleep(backoff)
                 }
             } finally {
-                try { inputStream?.close() } catch (_: Exception) {}
                 try { connection?.disconnect() } catch (_: Exception) {}
             }
         }
         return false
     }
 
-    /**
-     * Server API callback after successful S3 upload.
-     * Posts to the callbackUrl with the pre-built JSON body and auth token.
-     */
     private fun performServerCallback(item: PendingUpload): Boolean {
         val maxRetries = 3
         for (attempt in 1..maxRetries) {
@@ -396,15 +437,16 @@ class UploadReschedulerService : Service() {
                     return true
                 }
 
-                // Auth token expired — no point retrying
                 if (responseCode == 401) return false
 
                 if (attempt < maxRetries) {
-                    Thread.sleep((attempt * 2000).toLong())
+                    val backoff = (attempt * 3000).toLong()
+                    Thread.sleep(backoff)
                 }
             } catch (e: Exception) {
                 if (attempt < maxRetries) {
-                    Thread.sleep((attempt * 2000).toLong())
+                    val backoff = (attempt * 3000).toLong()
+                    Thread.sleep(backoff)
                 }
             } finally {
                 try { connection?.disconnect() } catch (_: Exception) {}
@@ -427,10 +469,6 @@ class UploadReschedulerService : Service() {
     }
 
     private fun persistCurrentState(queue: MutableList<PendingUpload>, activeIndex: Int) {
-        // Merge with existing state to preserve items added concurrently by
-        // other addToQueue calls (e.g. user adding a second video while the
-        // first is still uploading). Does NOT overwrite item status — that
-        // is handled by markItemStatus / markItemCompleted / markItemFailed.
         val existingState = UploadStateManager.load(this)
         val base = (existingState?.items ?: emptyList()).toMutableList()
         for (item in queue) {
@@ -486,14 +524,33 @@ class UploadReschedulerService : Service() {
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    private fun waitForNetwork() {
-        var waited = 0
-        val maxWait = 300_000L
-        while (waited < maxWait) {
-            if (isNetworkAvailable()) return
-            try { Thread.sleep(5000) } catch (_: Exception) { return }
-            waited += 5000
+    private fun waitForNetwork(): Boolean {
+        if (isNetworkAvailable()) return true
+
+        val latch = CountDownLatch(1)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                latch.countDown()
+            }
         }
+
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        cm.registerNetworkCallback(
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build(),
+            callback
+        )
+
+        val available = try {
+            latch.await(5, TimeUnit.MINUTES)
+        } catch (_: InterruptedException) {
+            false
+        }
+
+        try { cm.unregisterNetworkCallback(callback) } catch (_: Exception) {}
+
+        return available
     }
 
     private fun syncQueueFromJson(itemsJson: String) {

@@ -35,7 +35,7 @@ dependencies:
   video_thumbnail: ^0.5.3
   webview_flutter: ^4.14.0
   flutter_tawk_to_plus: ^1.1.1
-  get: ^4.7.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

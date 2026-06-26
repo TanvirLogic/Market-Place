@@ -104,18 +104,23 @@ import UserNotifications
         let contentType = args["contentType"] as? String
         let uploadType = args["uploadType"] as? String ?? "video_post"
         let metadata = args["metadata"] as? String
-        let itemId = args["itemId"] as? Int64 ?? -1
+        let fileUrl = args["fileUrl"] as? String
+        let authToken = args["authToken"] as? String
+        let callbackUrl = args["callbackUrl"] as? String
+        let callbackBody = args["callbackBody"] as? String
+        let itemId = (args["itemId"] as? NSNumber)?.int64Value ?? -1
 
-        // Save to shared state file
         var state = BackgroundUploadManager.shared.loadQueueState() ?? UploadState(items: [], activeIndex: 0, isUploading: false, lastUpdated: Date().timeIntervalSince1970)
         let newItem = QueueItem(
           id: itemId, filePath: filePath, title: title,
-          uploadUrl: uploadUrl, contentType: contentType,
-          uploadType: uploadType, metadata: metadata,
-          status: "pending", errorMessage: nil
+          uploadUrl: uploadUrl, fileUrl: fileUrl,
+          contentType: contentType, uploadType: uploadType,
+          metadata: metadata,
+          callbackUrl: callbackUrl, callbackBody: callbackBody, authToken: authToken,
+          status: "pending", errorMessage: nil, progress: 0
         )
         state.items.removeAll { $0.id == itemId }
-        state.items.insert(newItem, at: 0)
+        state.items.append(newItem)
         BackgroundUploadManager.shared.saveQueueState(state)
         result(true)
 
@@ -124,8 +129,16 @@ import UserNotifications
         result(true)
 
       case "getNativePendingUploads":
-        let json = BackgroundUploadManager.shared.getQueueStateJson()
+        let json = BackgroundUploadManager.shared.getQueueItemsJson()
         result(json)
+
+      case "getNativeQueueItems":
+        let json = BackgroundUploadManager.shared.getNativeQueueItemsJson()
+        result(json)
+
+      case "startServiceForUpload":
+        BackgroundUploadManager.shared.processQueue()
+        result(true)
 
       case "getNativeQueueStatus":
         let state = BackgroundUploadManager.shared.loadQueueState()

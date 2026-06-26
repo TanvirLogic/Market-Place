@@ -289,6 +289,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     required String lessonTitle,
     required int moduleId,
     required int courseId,
+    int? lessonId,
   }) async {
     if (!File(videoPath).existsSync()) {
       AppLogger.w('addModuleLessonToQueue: file not found at $videoPath');
@@ -299,6 +300,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       moduleId: moduleId,
       courseId: courseId,
       lessonTitle: lessonTitle,
+      lessonId: lessonId,
     );
 
     final metadataJson = jsonEncode(meta.toJson());
@@ -399,6 +401,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     required int moduleId,
     required int courseId,
     required String contentType,
+    int? lessonId,
   }) async {
     if (!File(filePath).existsSync()) {
       AppLogger.w('addResourceToQueue: file not found at $filePath');
@@ -410,6 +413,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       courseId: courseId,
       lessonTitle: lessonTitle,
       contentType: contentType,
+      lessonId: lessonId,
     );
 
     final metadataJson = jsonEncode(meta.toJson());

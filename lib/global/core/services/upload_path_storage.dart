@@ -145,12 +145,13 @@ class UploadPathStorage {
   }
 
   /// Returns the atomic queue as a JSON string (for native MethodChannel sync).
-  /// Each item includes: id, filePath, title, uploadType, metadata, uploadUrl (null), contentType (null).
+  /// Uses a stable hash of the file path as the id to ensure consistency
+  /// across app restarts and crash recovery cycles.
   static Future<String> getAtomicQueueJson() async {
     try {
       final paths = await getAllPendingPaths();
       final items = paths.map((p) => {
-        'id': DateTime.now().millisecondsSinceEpoch + paths.indexOf(p),
+        'id': p.filePath.hashCode & 0x7FFFFFFFFFFFFFFF,
         'filePath': p.filePath,
         'title': p.title,
         'uploadUrl': null,

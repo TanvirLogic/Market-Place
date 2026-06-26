@@ -58,11 +58,12 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "syncQueueToNative" -> {
-                        val itemsJson = call.argument<String>("itemsJson")
+                        val itemsJson = when (call.arguments) {
+                            is String -> call.arguments as String
+                            else -> call.argument<String>("itemsJson")
+                        }
                         if (itemsJson != null) {
-                            // Save to state file
                             syncQueueFromFlutter(itemsJson)
-                            // Also sync to the running service if it's alive
                             val intent = Intent(this, UploadReschedulerService::class.java).apply {
                                 action = UploadReschedulerService.ACTION_SYNC_QUEUE
                                 putExtra(UploadReschedulerService.EXTRA_QUEUE_JSON, itemsJson)
@@ -111,7 +112,7 @@ class MainActivity : FlutterActivity() {
                             status = UploadConstants.STATUS_PENDING,
                         )
                         existingItems.removeAll { it.id == itemId }
-                        existingItems.add(0, newItem)
+                        existingItems.add(newItem)
                         UploadStateManager.save(this, existingItems, 0, true)
 
                         result.success(true)
