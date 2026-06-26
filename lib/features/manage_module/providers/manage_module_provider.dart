@@ -25,6 +25,8 @@ class ManageModuleProvider extends ChangeNotifier {
   final Map<int, String> _pendingFileUrls = {};
   Timer? _progressTimer;
   bool _hasUnsavedChanges = false;
+  bool _isRestoringPending = false;
+  final Set<int> _notifiedCompletions = {};
 
   String _courseTitle = '';
   String _courseShortDescription = '';
@@ -148,11 +150,23 @@ class ManageModuleProvider extends ChangeNotifier {
       }
     }
     _isLoading = false;
+    for (final module in _modules) {
+      if (module.id >= _nextModuleId) {
+        _nextModuleId = module.id + 1;
+      }
+      for (final lesson in module.lessons) {
+        if (lesson.id >= _nextLessonId) {
+          _nextLessonId = lesson.id + 1;
+        }
+      }
+    }
     notifyListeners();
     _restorePendingUploads();
   }
 
   Future<void> _restorePendingUploads() async {
+    if (_isRestoringPending) return;
+    _isRestoringPending = true;
     try {
       final allItems = await UploadQueueRepository.getActive();
       final lessonItems = allItems
@@ -166,6 +180,10 @@ class ManageModuleProvider extends ChangeNotifier {
       bool hasUpdates = false;
 
       for (final item in lessonItems) {
+        if (item.id == null || _queueItemToLesson.containsKey(item.id)) {
+          continue;
+        }
+
         final meta = item.parseMetadata(ModuleLessonMetadata.fromJson);
         if (meta == null) {
           AppLogger.w(
@@ -185,7 +203,6 @@ class ManageModuleProvider extends ChangeNotifier {
 
         final module = _modules[moduleIndex];
 
-        // Use lessonId from metadata if available; fall back to title match
         final restoredLessonId = meta.lessonId;
         final alreadyExists = restoredLessonId != null
             ? module.lessons.any((l) => l.id == restoredLessonId)
@@ -208,7 +225,7 @@ class ManageModuleProvider extends ChangeNotifier {
           duration: '0:00',
           type: isResource ? LessonType.resource : LessonType.video,
           uploadProgress: 0.0,
-          uploadStatus: 'pending',
+          uploadStatus: item.status,
         );
 
         module.lessons.add(lesson);
@@ -217,11 +234,13 @@ class ManageModuleProvider extends ChangeNotifier {
       }
 
       if (hasUpdates) {
-        _startProgressPolling();
+        if (_progressTimer == null) _startProgressPolling();
         notifyListeners();
       }
     } catch (e) {
       AppLogger.e('_restorePendingUploads error: $e');
+    } finally {
+      _isRestoringPending = false;
     }
   }
 
@@ -494,21 +513,15 @@ class ManageModuleProvider extends ChangeNotifier {
     _progressTimer?.cancel();
     int emptyNativeReads = 0;
 
-    _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    _progressTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       try {
         final data = await NativeUploadBridge.getQueueItems();
         final items = data['items'] as List<dynamic>? ?? [];
         bool updated = false;
 
-        // If native state is empty but we still have queued lessons,
-        // the native service completed and deleted the state file.
-        // Mark all queued lessons as completed using cached fileUrls.
         if (items.isEmpty && _queueItemToLesson.isNotEmpty) {
           emptyNativeReads++;
-          // Wait 2 cycles (~10 seconds) to confirm native is truly gone
-          // before marking as completed (avoids false positive on slow reads)
           if (emptyNativeReads >= 2) {
-            bool completedAny = false;
             for (final entry in _queueItemToLesson.entries) {
               final lesson = _findLessonById(entry.value);
               if (lesson != null && lesson.uploadStatus != 'completed') {
@@ -517,15 +530,14 @@ class ManageModuleProvider extends ChangeNotifier {
                 if (cachedUrl != null && cachedUrl.isNotEmpty) {
                   _setLessonUrl(lesson, cachedUrl);
                 }
-                completedAny = true;
                 updated = true;
+                if (_notifiedCompletions.add(entry.key)) {
+                  ToastService.showSuccess('Upload completed successfully');
+                }
               }
             }
             _queueItemToLesson.clear();
             _pendingFileUrls.clear();
-            if (completedAny) {
-              ToastService.showSuccess('Upload completed successfully');
-            }
           }
         } else if (items.isNotEmpty) {
           emptyNativeReads = 0;
@@ -554,7 +566,6 @@ class ManageModuleProvider extends ChangeNotifier {
               updated = true;
             }
 
-            // Cache fileUrl while native state is still available
             final fileUrl = item['fileUrl'] as String?;
             if (fileUrl != null && fileUrl.isNotEmpty) {
               _pendingFileUrls[queueId] = fileUrl;
@@ -571,7 +582,9 @@ class ManageModuleProvider extends ChangeNotifier {
               }
               _queueItemToLesson.remove(queueId);
               _pendingFileUrls.remove(queueId);
-              ToastService.showSuccess('Upload completed successfully');
+              if (_notifiedCompletions.add(queueId)) {
+                ToastService.showSuccess('Upload completed successfully');
+              }
             } else if (status == 'failed') {
               _queueItemToLesson.remove(queueId);
               _pendingFileUrls.remove(queueId);

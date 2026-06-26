@@ -369,10 +369,10 @@ class UploadReschedulerService : Service() {
                             ((totalRead * 100) / fileSize).toInt()
                         } else 0
 
-                        // Report progress on first chunk + every 5% thereafter
+                        // Report progress on first chunk + every 1% thereafter
                         // The first-chunk report ensures small files show some progress
                         val shouldReport = lastReportedProgress < 0 ||
-                            progress >= lastReportedProgress + 5
+                            progress >= lastReportedProgress + 1
                         if (shouldReport) {
                             lastReportedProgress = progress
                             if (itemId >= 0) {

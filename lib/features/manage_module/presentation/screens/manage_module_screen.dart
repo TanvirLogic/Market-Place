@@ -180,7 +180,9 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                       cancelText: 'Cancel',
                                     );
                                     if (confirmed == true) {
-                                      return provider.deleteModule(module);
+                                      final ok = await provider.deleteModule(module);
+                                      if (ok) await provider.refresh();
+                                      return ok;
                                     }
                                     return false;
                                   },
