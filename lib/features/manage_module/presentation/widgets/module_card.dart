@@ -5,7 +5,6 @@ import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/widgets/swipe_action_widget.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
-
 class ModuleCard extends StatelessWidget {
   final CourseModule module;
   final bool isDark;
@@ -22,6 +21,9 @@ class ModuleCard extends StatelessWidget {
   final void Function(int) onEditLesson;
   final void Function(String videoUrl, String title) onTapVideo;
   final void Function(String fileUrl, String title) onTapResource;
+  final List<PendingLesson> pendingLessons;
+  final Future<void> Function(int queueId) onDeletePendingLesson;
+  final Future<void> Function(int queueId) onRetryPendingLesson;
 
   final ValueNotifier<int>? resetNotifier;
 
@@ -42,6 +44,9 @@ class ModuleCard extends StatelessWidget {
     required this.onEditLesson,
     required this.onTapVideo,
     required this.onTapResource,
+    this.pendingLessons = const [],
+    required this.onDeletePendingLesson,
+    required this.onRetryPendingLesson,
     this.resetNotifier,
   });
 
@@ -94,7 +99,7 @@ class ModuleCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          "${module.lessons.length} lessons",
+                          "${module.lessons.length + pendingLessons.length} lessons",
                           style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6)),
                         ),
                       ],
@@ -164,11 +169,180 @@ class ModuleCard extends StatelessWidget {
                         );
                         },
                     ),
+                  if (pendingLessons.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    ...pendingLessons.map((pending) => Padding(
+                      key: ValueKey('pending_${pending.type.name}_${pending.queueId}'),
+                      padding: const EdgeInsets.only(top: 4),
+                      child: _PendingLessonRow(
+                        pending: pending,
+                        isDark: isDark,
+                        isEditing: isEditing,
+                        onDelete: () => onDeletePendingLesson(pending.queueId),
+                        onRetry: () => onRetryPendingLesson(pending.queueId),
+                      ),
+                    )),
+                  ],
                 ],
               ),
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _PendingLessonRow extends StatelessWidget {
+  final PendingLesson pending;
+  final bool isDark;
+  final bool isEditing;
+  final VoidCallback onDelete;
+  final VoidCallback? onRetry;
+
+  const _PendingLessonRow({
+    required this.pending,
+    required this.isDark,
+    required this.isEditing,
+    required this.onDelete,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isUploading = pending.uploadStatus == 'uploading';
+    final progress = pending.uploadProgress;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: (isDark ? cs.surfaceContainerHighest : const Color(0xFFF8F9FA))
+              .withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.primary.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: SvgPicture.asset(
+                      pending.type == LessonType.video
+                          ? Images.learnVideo
+                          : Images.resource,
+                      width: 16,
+                      height: 16,
+                      colorFilter: ColorFilter.mode(cs.primary, BlendMode.srcIn),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    pending.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                if (pending.uploadStatus == 'failed')
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(Icons.error_outline, size: 16, color: Colors.red.shade400),
+                  ),
+                if (pending.uploadStatus == 'failed' && onRetry != null)
+                  GestureDetector(
+                    onTap: onRetry,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Icon(Icons.refresh, size: 16, color: cs.primary),
+                    ),
+                  ),
+                if (isEditing)
+                  GestureDetector(
+                    onTap: onDelete,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Icon(Icons.close, size: 16, color: cs.onSurface.withValues(alpha: 0.5)),
+                    ),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: isUploading
+                        ? LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 4,
+                            backgroundColor: cs.outlineVariant,
+                          )
+                        : LinearProgressIndicator(
+                            minHeight: 4,
+                            backgroundColor: cs.outlineVariant,
+                          ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          pending.uploadStatus == 'pending'
+                              ? 'Waiting to upload...'
+                              : pending.uploadStatus == 'uploading'
+                                  ? 'Uploading ${(progress * 100).toInt()}%'
+                                  : pending.uploadStatus == 'failed'
+                                      ? 'Upload failed'
+                                      : 'Upload complete',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: pending.uploadStatus == 'failed'
+                                ? Colors.red.shade400
+                                : cs.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                      if (pending.uploadStatus == 'failed' && onRetry != null)
+                        GestureDetector(
+                          onTap: onRetry,
+                          child: Text(
+                            ' Retry',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: cs.primary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -375,42 +549,6 @@ class _LessonSwipeRowState extends State<_LessonSwipeRow> {
                         Icon(Icons.chevron_right, size: 18, color: cs.onSurface),
                       ],
                     ),
-                    if (lesson.uploadStatus == 'pending' || lesson.uploadStatus == 'uploading')
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (lesson.uploadStatus == 'uploading')
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: lesson.uploadProgress,
-                                  minHeight: 4,
-                                  backgroundColor: cs.outlineVariant,
-                                ),
-                              )
-                            else
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  minHeight: 4,
-                                  backgroundColor: cs.outlineVariant,
-                                ),
-                              ),
-                            const SizedBox(height: 4),
-                            Text(
-                              lesson.uploadStatus == 'pending'
-                                  ? 'Waiting to upload...'
-                                  : 'Uploading ${(lesson.uploadProgress * 100).toInt()}%',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: cs.onSurface.withValues(alpha: 0.5),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                   ],
                 ),
               ),

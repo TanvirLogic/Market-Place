@@ -41,3 +41,27 @@ class CourseModule {
     this.courseId = 1,
   });
 }
+
+class PendingLesson {
+  final int queueId;
+  final int lessonId;
+  String title;
+  final LessonType type;
+  final String filePath;
+  double uploadProgress;
+  String uploadStatus;
+  String? fileUrl;
+  final int moduleId;
+
+  PendingLesson({
+    required this.queueId,
+    required this.lessonId,
+    required this.title,
+    required this.type,
+    required this.filePath,
+    this.uploadProgress = 0.0,
+    this.uploadStatus = 'pending',
+    this.fileUrl,
+    required this.moduleId,
+  });
+}

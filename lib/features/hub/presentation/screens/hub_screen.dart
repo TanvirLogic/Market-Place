@@ -107,7 +107,9 @@ class _HubScreenState extends State<HubScreen> {
                     label: 'Profile Details',
                     onTap: () => AppRoutes.navigateToProfile(
                       context,
-                      profile?.role ?? 'STUDENT',
+                      AuthController.userModel?.isMentor == true
+                          ? 'MENTOR'
+                          : 'STUDENT',
                     ),
                     cs: cs,
                     isDark: isDark,

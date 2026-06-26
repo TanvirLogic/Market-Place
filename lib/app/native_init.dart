@@ -214,17 +214,34 @@ Future<void> _clearStaleLocks() async {
   }
 }
 
-/// Always syncs from SQLite (correct IDs + uploadUrls) and starts the
-/// native service. The native service ignores duplicate start intents
-/// if it's already processing, so this is safe to call even when running.
+/// Checks native state first — if items already exist there, just restart the
+/// native service without overwriting. Only syncs from SQLite when native
+/// state is empty, to avoid interrupting mid-upload items or creating duplicates.
 Future<void> _autoResumeIfNeeded() async {
   try {
+    final nativeItems = await NativeUploadBridge.getPendingUploads();
+    final hasNativeItems = nativeItems.isNotEmpty;
+
+    if (hasNativeItems) {
+      final hasActiveItems = nativeItems.any((n) {
+        final s = n['status'] as String? ?? '';
+        return s == 'pending' || s == 'uploading';
+      });
+      if (hasActiveItems) {
+        AppLogger.i('AutoResume: native state has ${nativeItems.length} active item(s), restarting service only');
+        await NativeUploadBridge.startQueueProcessing();
+        return;
+      }
+      // Native state has only completed/failed items — clear it and fall
+      // through to SQLite-based resume below.
+      await NativeUploadBridge.clearState();
+    }
+
     final pendingCount = await UploadQueueRepository.countPending();
     if (pendingCount == 0) return;
 
-    AppLogger.i('AutoResume: $pendingCount pending item(s) found, auto-starting queue');
+    AppLogger.i('AutoResume: $pendingCount pending item(s) found, syncing from SQLite');
 
-    // Build native queue from SQLite — this has correct IDs and uploadUrls
     final pendingItems = await UploadQueueRepository.getByStatus('pending');
     if (pendingItems.isEmpty) return;
 
@@ -239,9 +256,6 @@ Future<void> _autoResumeIfNeeded() async {
       'metadata': item.metadata,
     }).toList());
 
-    // Always sync and start — the native service ignores duplicate start
-    // intents if it's already processing. This also handles the case where
-    // the isUploading flag is stale (service was killed but flag wasn't reset).
     await NativeUploadBridge.syncQueueToNative(nativeQueueJson);
     await NativeUploadBridge.startQueueProcessing();
   } catch (e) {

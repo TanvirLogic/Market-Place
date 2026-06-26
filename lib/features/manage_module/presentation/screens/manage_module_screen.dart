@@ -18,6 +18,7 @@ import 'package:edtech/features/manage_module/presentation/widgets/manage_module
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
 import 'package:edtech/global/core/providers/video_player_provider.dart';
 import 'package:edtech/features/profile/student/presentation/widgets/video_player_screen.dart';
+import 'package:edtech/global/core/services/toast_service.dart';
 
 class ManageModuleScreen extends StatelessWidget {
   final int courseId;
@@ -200,6 +201,16 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                   onToggleExpand: provider.toggleExpand,
                                   onRename: provider.renameModule,
                                   onShowRenameDialog: _showRenameDialog,
+                                  pendingLessonsForModule:
+                                      provider.pendingLessonsForModule,
+                                  onDeletePendingLesson:
+                                      provider.deletePendingLesson,
+                                  onRetryPendingLesson: (queueId) =>
+                                      provider.retryPendingLesson(
+                                        queueId,
+                                        queueProvider: context
+                                            .read<UnifiedUploadQueueProvider>(),
+                                      ),
                                   onAddVideo: (index) =>
                                       ManageModuleAddLessonSheet.show(
                                         context,
@@ -250,6 +261,10 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                     );
                                   },
                                   onTapVideo: (videoUrl, title) {
+                                    if (videoUrl.isEmpty) {
+                                      ToastService.showError('Video URL not available');
+                                      return;
+                                    }
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
@@ -261,6 +276,10 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                     );
                                   },
                                   onTapResource: (fileUrl, title) {
+                                    if (fileUrl.isEmpty) {
+                                      ToastService.showError('Resource URL not available');
+                                      return;
+                                    }
                                     launchUrl(
                                       Uri.parse(fileUrl),
                                       mode: LaunchMode.externalApplication,

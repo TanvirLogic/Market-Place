@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:edtech/features/courses/data/models/upload_task.dart';
 import 'package:edtech/features/courses/data/repositories/upload_queue_repository.dart';
@@ -21,11 +22,12 @@ class ManageModuleProvider extends ChangeNotifier {
 
   final List<CourseModule> _modules = [];
   final Map<int, String> _videoUrlCache = {};
-  final Map<int, int> _queueItemToLesson = {};
-  final Map<int, String> _pendingFileUrls = {};
+  final Map<int, PendingLesson> _pendingLessons = {};
   Timer? _progressTimer;
   bool _hasUnsavedChanges = false;
   bool _isRestoringPending = false;
+  bool _isRefreshing = false;
+  bool _isQueuing = false;
   final Set<int> _notifiedCompletions = {};
 
   String _courseTitle = '';
@@ -47,6 +49,14 @@ class ManageModuleProvider extends ChangeNotifier {
   List<CourseModule> get modules => _modules;
   bool get hasUnsavedChanges => _hasUnsavedChanges;
   bool get isLoading => _isLoading;
+
+  Map<int, PendingLesson> get pendingLessons => _pendingLessons;
+
+  List<PendingLesson> pendingLessonsForModule(int moduleId) {
+    return _pendingLessons.values
+        .where((p) => p.moduleId == moduleId)
+        .toList();
+  }
 
   @override
   void dispose() {
@@ -72,11 +82,23 @@ class ManageModuleProvider extends ChangeNotifier {
   void incrementModuleId() => _nextModuleId++;
   void incrementLessonId() => _nextLessonId++;
 
-  Future<void> refresh() => _fetchCourse();
+  Future<void> refresh() => _fetchCourse(silent: _pendingLessons.isNotEmpty);
 
-  Future<void> _fetchCourse() async {
-    _isLoading = true;
-    notifyListeners();
+  Future<void> _silentRefresh() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    try {
+      await _fetchCourse(silent: true);
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
+  Future<void> _fetchCourse({bool silent = false}) async {
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
     final response = await getNetworkCaller().getRequest(
       url: '${Urls.updateCourseUrl}?courseID=$courseId',
     );
@@ -149,7 +171,9 @@ class ManageModuleProvider extends ChangeNotifier {
         }
       }
     }
-    _isLoading = false;
+    if (!silent) {
+      _isLoading = false;
+    }
     for (final module in _modules) {
       if (module.id >= _nextModuleId) {
         _nextModuleId = module.id + 1;
@@ -160,8 +184,24 @@ class ManageModuleProvider extends ChangeNotifier {
         }
       }
     }
+
+    _removeCompletedPendingLessons();
     notifyListeners();
-    _restorePendingUploads();
+    if (!silent) {
+      _restorePendingUploads();
+    }
+  }
+
+  void _removeCompletedPendingLessons() {
+    final toRemove = <int>[];
+    for (final entry in _pendingLessons.entries) {
+      if (entry.value.uploadStatus == 'completed') {
+        toRemove.add(entry.key);
+      }
+    }
+    for (final queueId in toRemove) {
+      _pendingLessons.remove(queueId);
+    }
   }
 
   Future<void> _restorePendingUploads() async {
@@ -177,10 +217,21 @@ class ManageModuleProvider extends ChangeNotifier {
           .toList();
       if (lessonItems.isEmpty) return;
 
+      // Check what native is currently processing to avoid restoring
+      // items that completed while the provider was away.
+      final nativeState = await NativeUploadBridge.getQueueItems();
+      final nativeIds = (nativeState['items'] as List<dynamic>?)
+              ?.map((e) => (e as Map)['id'] as int?)
+              .whereType<int>()
+              .toSet() ??
+          {};
+
       bool hasUpdates = false;
 
       for (final item in lessonItems) {
-        if (item.id == null || _queueItemToLesson.containsKey(item.id)) {
+        if (item.id == null ||
+            _pendingLessons.containsKey(item.id) ||
+            item.status == 'cancelled') {
           continue;
         }
 
@@ -201,17 +252,40 @@ class ManageModuleProvider extends ChangeNotifier {
           continue;
         }
 
-        final module = _modules[moduleIndex];
-
         final restoredLessonId = meta.lessonId;
-        final alreadyExists = restoredLessonId != null
-            ? module.lessons.any((l) => l.id == restoredLessonId)
-            : module.lessons.any((l) => l.title == meta.lessonTitle);
-        if (alreadyExists) continue;
+        final alreadyExistsById = restoredLessonId != null
+            ? _modules[moduleIndex].lessons.any((l) => l.id == restoredLessonId)
+            : false;
+        final alreadyExistsByUrl = item.fileUrl != null && item.fileUrl!.isNotEmpty
+            ? _modules[moduleIndex].lessons.any(
+                (l) => l.videoUrl == item.fileUrl || l.fileUrl == item.fileUrl)
+            : false;
+        if (alreadyExistsById || alreadyExistsByUrl) {
+          if (alreadyExistsByUrl && item.id != null) {
+            await UploadQueueRepository.markCompleted(item.id!);
+          }
+          AppLogger.i(
+            '_restorePendingUploads: skipping "${meta.lessonTitle}" — already exists on server',
+          );
+          continue;
+        }
+
+        // If native isn't processing this item and it has a fileUrl,
+        // the upload completed but the server lesson may not exist yet.
+        // Mark SQLite as completed to prevent re-upload on next restart.
+        if (!nativeIds.contains(item.id) &&
+            item.fileUrl != null &&
+            item.fileUrl!.isNotEmpty) {
+          await UploadQueueRepository.markCompleted(item.id!);
+          AppLogger.i(
+            '_restorePendingUploads: marking "${meta.lessonTitle}" completed — fileUrl present, native inactive',
+          );
+          continue;
+        }
 
         final isResource = item.uploadType == 'resource';
         AppLogger.i(
-          '_restorePendingUploads: restoring ${isResource ? "resource" : "lesson"} "${meta.lessonTitle}" (lessonId=$restoredLessonId)',
+          '_restorePendingUploads: restoring ${isResource ? "resource" : "lesson"} "${meta.lessonTitle}"',
         );
 
         final lessonId = restoredLessonId ?? _nextLessonId++;
@@ -219,17 +293,19 @@ class ManageModuleProvider extends ChangeNotifier {
           _nextLessonId = lessonId + 1;
         }
 
-        final lesson = Lesson(
-          id: lessonId,
+        final pending = PendingLesson(
+          queueId: item.id!,
+          lessonId: lessonId,
           title: meta.lessonTitle,
-          duration: '0:00',
           type: isResource ? LessonType.resource : LessonType.video,
+          filePath: item.filePath,
           uploadProgress: 0.0,
           uploadStatus: item.status,
+          fileUrl: item.fileUrl,
+          moduleId: meta.moduleId,
         );
 
-        module.lessons.add(lesson);
-        _queueItemToLesson[item.id!] = lessonId;
+        _pendingLessons[item.id!] = pending;
         hasUpdates = true;
       }
 
@@ -362,7 +438,17 @@ class ManageModuleProvider extends ChangeNotifier {
       body: {'moduleID': module.id},
     );
     if (response.isSuccess) {
+      // Mark pending items for this module as cancelled in SQLite
+      for (final entry in _pendingLessons.entries) {
+        if (entry.value.moduleId == module.id) {
+          await UploadQueueRepository.updateStatus(
+            id: entry.key,
+            status: 'cancelled',
+          );
+        }
+      }
       _modules.removeWhere((m) => m.id == module.id);
+      _pendingLessons.removeWhere((_, p) => p.moduleId == module.id);
       notifyListeners();
       ToastService.showSuccess('Module deleted successfully');
       return true;
@@ -440,7 +526,12 @@ class ManageModuleProvider extends ChangeNotifier {
   }
 
   Future<bool> deleteLesson(CourseModule module, int lessonIndex) async {
-    final lesson = module.lessons[lessonIndex];
+    final allModuleLessons = module.lessons;
+    if (lessonIndex < 0 || lessonIndex >= allModuleLessons.length) {
+      return false;
+    }
+    final lesson = allModuleLessons[lessonIndex];
+
     final isResource = lesson.type == LessonType.resource;
     final response = await getNetworkCaller().deleteRequest(
       url: isResource
@@ -463,143 +554,229 @@ class ManageModuleProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> deletePendingLesson(int queueId) async {
+    final pending = _pendingLessons[queueId];
+    if (pending == null) return;
+
+    await UploadQueueRepository.updateStatus(
+      id: queueId,
+      status: 'cancelled',
+    );
+
+    _pendingLessons.remove(queueId);
+
+    if (_pendingLessons.isEmpty) {
+      _progressTimer?.cancel();
+      _progressTimer = null;
+    }
+    notifyListeners();
+    ToastService.showSuccess('Upload cancelled');
+  }
+
+  Future<void> retryPendingLesson(int queueId, {UnifiedUploadQueueProvider? queueProvider}) async {
+    final pending = _pendingLessons[queueId];
+    if (pending == null) return;
+
+    await UploadQueueRepository.updateStatus(
+      id: queueId,
+      status: 'pending',
+    );
+
+    // Resync the active queue to native (same pattern as native_init.dart)
+    final activeItems = await UploadQueueRepository.getActive();
+    final nativeQueueJson = jsonEncode(activeItems.map((item) => {
+      'id': item.id,
+      'filePath': item.filePath,
+      'title': item.title,
+      'uploadUrl': item.uploadUrl,
+      'fileUrl': item.fileUrl,
+      'contentType': 'application/octet-stream',
+      'uploadType': item.uploadType,
+      'metadata': item.metadata,
+    }).toList());
+    await NativeUploadBridge.syncQueueToNative(nativeQueueJson);
+    await NativeUploadBridge.startQueueProcessing();
+
+    _pendingLessons[queueId] = PendingLesson(
+      queueId: pending.queueId,
+      lessonId: pending.lessonId,
+      title: pending.title,
+      type: pending.type,
+      filePath: pending.filePath,
+      moduleId: pending.moduleId,
+      uploadProgress: 0.0,
+      uploadStatus: 'pending',
+    );
+    _startProgressPolling();
+    notifyListeners();
+    ToastService.showInfo('Retrying upload...');
+  }
+
   Future<bool> addVideoLesson(
     int moduleIndex,
     String title,
     XFile videoFile, {
     UnifiedUploadQueueProvider? queueProvider,
   }) async {
-    final module = _modules[moduleIndex];
-    final lessonId = _nextLessonId++;
+    if (_isQueuing) {
+      ToastService.showError('Please wait, another file is being queued');
+      return false;
+    }
 
-    final lesson = Lesson(
-      id: lessonId,
-      title: title,
-      duration: '0:00',
-      type: LessonType.video,
-      uploadProgress: 0.0,
-      uploadStatus: 'pending',
-    );
-    module.lessons.add(lesson);
-    _hasUnsavedChanges = true;
-    notifyListeners();
-
+    _isQueuing = true;
     try {
-      final queueId = await queueProvider!.addModuleLessonToQueue(
-        videoPath: videoFile.path,
-        lessonTitle: title,
-        moduleId: module.id,
-        courseId: courseId,
-        lessonId: lessonId,
-      );
-      if (queueId <= 0) {
-        lesson.uploadStatus = 'failed';
-        notifyListeners();
+      final module = _modules[moduleIndex];
+
+      if (queueProvider == null) return false;
+
+      // Check ALL statuses for same filePath — prevents duplicates even after failure/cancellation
+      if (!await _checkDedupOrCleanup(videoFile.path)) return false;
+
+      final lessonId = _nextLessonId++;
+      int queueId;
+      try {
+        queueId = await queueProvider.addModuleLessonToQueue(
+          videoPath: videoFile.path,
+          lessonTitle: title,
+          moduleId: module.id,
+          courseId: courseId,
+          lessonId: lessonId,
+        );
+      } catch (e) {
+        AppLogger.e('addVideoLesson queue error: $e');
+        ToastService.showError('Failed to queue video lesson');
         return false;
       }
-      _queueItemToLesson[queueId] = lessonId;
+
+      if (queueId <= 0) return false;
+
+      final pending = PendingLesson(
+        queueId: queueId,
+        lessonId: lessonId,
+        title: title,
+        type: LessonType.video,
+        filePath: videoFile.path,
+        uploadProgress: 0.0,
+        uploadStatus: 'pending',
+        moduleId: module.id,
+      );
+
+      _pendingLessons[queueId] = pending;
+      _hasUnsavedChanges = true;
+      notifyListeners();
       _startProgressPolling();
       return true;
-    } catch (e) {
-      AppLogger.e('addVideoLesson queue error: $e');
-      lesson.uploadStatus = 'failed';
-      notifyListeners();
-      ToastService.showError('Failed to queue video lesson');
-      return false;
+    } finally {
+      _isQueuing = false;
     }
   }
 
   void _startProgressPolling() {
     _progressTimer?.cancel();
-    int emptyNativeReads = 0;
-
-    _progressTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       try {
         final data = await NativeUploadBridge.getQueueItems();
         final items = data['items'] as List<dynamic>? ?? [];
         bool updated = false;
+        final completedIds = <int>[];
 
-        if (items.isEmpty && _queueItemToLesson.isNotEmpty) {
-          emptyNativeReads++;
-          if (emptyNativeReads >= 2) {
-            for (final entry in _queueItemToLesson.entries) {
-              final lesson = _findLessonById(entry.value);
-              if (lesson != null && lesson.uploadStatus != 'completed') {
-                lesson.uploadStatus = 'completed';
-                final cachedUrl = _pendingFileUrls.remove(entry.key);
-                if (cachedUrl != null && cachedUrl.isNotEmpty) {
-                  _setLessonUrl(lesson, cachedUrl);
-                }
-                updated = true;
-                if (_notifiedCompletions.add(entry.key)) {
-                  ToastService.showSuccess('Upload completed successfully');
-                }
-              }
-            }
-            _queueItemToLesson.clear();
-            _pendingFileUrls.clear();
+        for (final raw in items) {
+          final item = raw as Map<String, dynamic>;
+          final queueId = item['id'] as int;
+          final pending = _pendingLessons[queueId];
+          if (pending == null) continue;
+
+          final status = item['status'] as String? ?? 'pending';
+          final progress =
+              ((item['progress'] as num?)?.toDouble() ?? 0.0) / 100.0;
+
+          if (pending.uploadStatus != status ||
+              pending.uploadProgress != progress) {
+            pending.uploadStatus = status;
+            pending.uploadProgress = progress;
+            updated = true;
           }
-        } else if (items.isNotEmpty) {
-          emptyNativeReads = 0;
 
-          for (final raw in items) {
-            final item = raw as Map<String, dynamic>;
-            final queueId = item['id'] as int;
-            final lessonId = _queueItemToLesson[queueId];
-            if (lessonId == null) continue;
+          final fileUrl = item['fileUrl'] as String?;
+          if (fileUrl != null && fileUrl.isNotEmpty) {
+            pending.fileUrl = fileUrl;
+          }
 
-            final lesson = _findLessonById(lessonId);
-            if (lesson == null) {
-              _queueItemToLesson.remove(queueId);
-              _pendingFileUrls.remove(queueId);
-              continue;
-            }
-
-            final status = item['status'] as String? ?? 'pending';
-            final progress =
-                ((item['progress'] as num?)?.toDouble() ?? 0.0) / 100.0;
-
-            if (lesson.uploadStatus != status ||
-                lesson.uploadProgress != progress) {
-              lesson.uploadStatus = status;
-              lesson.uploadProgress = progress;
-              updated = true;
-            }
-
-            final fileUrl = item['fileUrl'] as String?;
+          if (status == 'completed') {
             if (fileUrl != null && fileUrl.isNotEmpty) {
-              _pendingFileUrls[queueId] = fileUrl;
+              pending.fileUrl = fileUrl;
             }
+            pending.uploadStatus = 'completed';
+            updated = true;
+            completedIds.add(queueId);
+            await UploadQueueRepository.markCompleted(queueId);
+            if (_notifiedCompletions.add(queueId)) {
+              ToastService.showSuccess('Upload completed successfully');
+            }
+          } else if (status == 'failed') {
+            pending.uploadStatus = 'failed';
+            pending.uploadProgress = 0.0;
+            updated = true;
+          }
+        }
 
-            if (status == 'completed') {
-              if (fileUrl != null && fileUrl.isNotEmpty) {
-                _setLessonUrl(lesson, fileUrl);
-              } else {
-                final cachedUrl = _pendingFileUrls.remove(queueId);
-                if (cachedUrl != null && cachedUrl.isNotEmpty) {
-                  _setLessonUrl(lesson, cachedUrl);
-                }
-              }
-              _queueItemToLesson.remove(queueId);
-              _pendingFileUrls.remove(queueId);
-              if (_notifiedCompletions.add(queueId)) {
+        // Fix B: When native state is empty but we still have tracked items,
+        // check SQLite to clean up orphaned or already-completed entries
+        if (items.isEmpty && _pendingLessons.isNotEmpty) {
+          final allDbItems = await UploadQueueRepository.getAll();
+          final dbItemMap = {for (final item in allDbItems) item.id: item};
+          final orphanedIds = <int>[];
+
+          for (final entry in _pendingLessons.entries) {
+            final dbItem = dbItemMap[entry.key];
+            if (dbItem == null) {
+              // Item deleted from SQLite (already completed and cleared)
+              orphanedIds.add(entry.key);
+            } else if (dbItem.status == 'completed' || dbItem.status == 'failed') {
+              // SQLite status was updated separately
+              orphanedIds.add(entry.key);
+            } else if (dbItem.fileUrl != null && dbItem.fileUrl!.isNotEmpty) {
+              // Has fileUrl but native is done with it — upload completed
+              await UploadQueueRepository.markCompleted(entry.key);
+              orphanedIds.add(entry.key);
+              if (_notifiedCompletions.add(entry.key)) {
                 ToastService.showSuccess('Upload completed successfully');
               }
-            } else if (status == 'failed') {
-              _queueItemToLesson.remove(queueId);
-              _pendingFileUrls.remove(queueId);
             }
           }
+
+          for (final queueId in orphanedIds) {
+            _pendingLessons.remove(queueId);
+        
+          }
+          if (orphanedIds.isNotEmpty) {
+            completedIds.addAll(orphanedIds);
+            updated = true;
+          }
+        }
+
+        // Remove completed items — failed items stay visible
+        for (final queueId in completedIds) {
+          _pendingLessons.remove(queueId);
+      
+        }
+        if (completedIds.isNotEmpty) {
+          UploadQueueRepository.clearCompleted();
+        }
+
+        if (completedIds.isNotEmpty) {
+          await _silentRefresh();
         }
 
         if (updated) notifyListeners();
 
-        if (_queueItemToLesson.isEmpty) {
+        if (_pendingLessons.isEmpty) {
           _progressTimer?.cancel();
           _progressTimer = null;
-          if (_notifiedCompletions.isNotEmpty) {
-            UploadQueueRepository.clearCompleted();
-            _fetchCourse();
+          if (completedIds.isNotEmpty) {
+            Future.delayed(const Duration(seconds: 10), () async {
+              await _silentRefresh();
+            });
           }
         }
       } catch (e) {
@@ -608,21 +785,31 @@ class ManageModuleProvider extends ChangeNotifier {
     });
   }
 
-  Lesson? _findLessonById(int lessonId) {
-    for (final module in _modules) {
-      for (final lesson in module.lessons) {
-        if (lesson.id == lessonId) return lesson;
-      }
-    }
-    return null;
-  }
+  /// Checks if a filePath is already in the queue (any status).
+  /// If it exists with a terminal status (failed/cancelled/completed),
+  /// auto-cleans the old row to allow re-upload.
+  /// Returns true if the file is safe to queue, false if blocked.
+  Future<bool> _checkDedupOrCleanup(String filePath) async {
+    final allItems = await UploadQueueRepository.getAll();
+    final existing = allItems.cast<UploadQueueItem?>().firstWhere(
+      (item) =>
+          item!.filePath == filePath &&
+          (item.uploadType == 'module_lesson' || item.uploadType == 'resource'),
+      orElse: () => null,
+    );
+    if (existing == null) return true;
 
-  void _setLessonUrl(Lesson lesson, String url) {
-    if (lesson.type == LessonType.resource) {
-      lesson.fileUrl ??= url;
-    } else {
-      lesson.videoUrl ??= url;
+    if (existing.status == 'pending' || existing.status == 'uploading') {
+      ToastService.showError('This file is already being uploaded');
+      return false;
     }
+
+    // Terminal status — clean up old row and allow re-upload
+    if (existing.id != null) {
+      await UploadQueueRepository.deleteItem(existing.id!);
+    }
+    _pendingLessons.remove(existing.id);
+    return true;
   }
 
   Future<bool> addResourceLesson(
@@ -631,46 +818,57 @@ class ManageModuleProvider extends ChangeNotifier {
     XFile resourceFile, {
     UnifiedUploadQueueProvider? queueProvider,
   }) async {
-    final module = _modules[moduleIndex];
-    final lessonId = _nextLessonId++;
+    if (_isQueuing) {
+      ToastService.showError('Please wait, another file is being queued');
+      return false;
+    }
 
-    final lesson = Lesson(
-      id: lessonId,
-      title: title,
-      duration: '0:00',
-      type: LessonType.resource,
-      uploadProgress: 0.0,
-      uploadStatus: 'pending',
-    );
-    module.lessons.add(lesson);
-    _hasUnsavedChanges = true;
-    notifyListeners();
-
+    _isQueuing = true;
     try {
-      final contentType = _inferResourceContentType(resourceFile.name);
-      final queueId = await queueProvider!.addResourceToQueue(
-        filePath: resourceFile.path,
-        lessonTitle: title,
-        moduleId: module.id,
-        courseId: courseId,
-        contentType: contentType,
-        lessonId: lessonId,
-      );
-      if (queueId <= 0) {
-        lesson.uploadStatus = 'failed';
-        notifyListeners();
-        ToastService.showError('Failed to queue resource');
+      final module = _modules[moduleIndex];
+
+      if (queueProvider == null) return false;
+
+      if (!await _checkDedupOrCleanup(resourceFile.path)) return false;
+
+      final lessonId = _nextLessonId++;
+      int queueId;
+      try {
+        final contentType = _inferResourceContentType(resourceFile.name);
+        queueId = await queueProvider.addResourceToQueue(
+          filePath: resourceFile.path,
+          lessonTitle: title,
+          moduleId: module.id,
+          courseId: courseId,
+          contentType: contentType,
+          lessonId: lessonId,
+        );
+      } catch (e) {
+        AppLogger.e('addResourceLesson queue error: $e');
+        ToastService.showError('Failed to queue resource lesson');
         return false;
       }
-      _queueItemToLesson[queueId] = lessonId;
+
+      if (queueId <= 0) return false;
+
+      final pending = PendingLesson(
+        queueId: queueId,
+        lessonId: lessonId,
+        title: title,
+        type: LessonType.resource,
+        filePath: resourceFile.path,
+        uploadProgress: 0.0,
+        uploadStatus: 'pending',
+        moduleId: module.id,
+      );
+
+      _pendingLessons[queueId] = pending;
+      _hasUnsavedChanges = true;
+      notifyListeners();
       _startProgressPolling();
       return true;
-    } catch (e) {
-      AppLogger.e('addResourceLesson queue error: $e');
-      lesson.uploadStatus = 'failed';
-      notifyListeners();
-      ToastService.showError('Failed to queue resource lesson');
-      return false;
+    } finally {
+      _isQueuing = false;
     }
   }
 

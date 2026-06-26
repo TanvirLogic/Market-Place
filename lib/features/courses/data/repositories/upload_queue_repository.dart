@@ -238,8 +238,8 @@ class UploadQueueRepository {
     final db = await database;
     final maps = await db.query(
       'upload_queue',
-      where: 'status != ? AND status != ?',
-      whereArgs: ['completed', 'failed'],
+      where: 'status NOT IN (?, ?, ?)',
+      whereArgs: ['completed', 'failed', 'cancelled'],
       orderBy: 'id ASC',
     );
     return maps.map((m) => UploadQueueItem.fromMap(m)).toList();
@@ -267,7 +267,6 @@ class UploadQueueRepository {
       {
         'uploadUrl': uploadUrl,
         'fileUrl': fileUrl,
-        'status': 'uploading',
         'lastUpdated': DateTime.now().toIso8601String(),
       },
       where: 'id = ?',
@@ -371,7 +370,7 @@ class UploadQueueRepository {
   static Future<int> countActive() async {
     final db = await database;
     final result = await db.rawQuery(
-      "SELECT COUNT(*) as cnt FROM upload_queue WHERE status NOT IN ('completed', 'failed')",
+      "SELECT COUNT(*) as cnt FROM upload_queue WHERE status NOT IN ('completed', 'failed', 'cancelled')",
     );
     return (result.first['cnt'] as int?) ?? 0;
   }

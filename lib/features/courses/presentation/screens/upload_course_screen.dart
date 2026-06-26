@@ -96,10 +96,24 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
     setState(() => _isUploading = true);
 
     final provider = context.read<UnifiedUploadQueueProvider>();
+    final title = _titleCtrl.text.trim();
+
+    // Queue intro video through centralized system if selected
+    String? introVideoUrl;
+    if (_videoFile != null) {
+      final videoFile = File(_videoFile!.path);
+      if (await videoFile.exists()) {
+        introVideoUrl = await provider.addCourseIntroVideo(
+          filePath: _videoFile!.path,
+          title: 'Course intro: $title',
+        );
+      }
+    }
+
     final id = await provider.addCourseToQueue(
       thumbnailPath: _thumbnailFile!.path,
       videoPath: _videoFile?.path,
-      title: _titleCtrl.text.trim(),
+      title: title,
       shortDescription: _shortDescCtrl.text.trim(),
       description: _descCtrl.text.trim(),
       requirements: _reqCtrl.text.trim(),
@@ -107,12 +121,14 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
       level: _selectedLevel,
       type: _courseType,
       price: price,
+      introVideoUrl: introVideoUrl,
     );
 
     if (!mounted) return;
     setState(() => _isUploading = false);
 
     if (id > 0) {
+      ToastService.showSuccess('Course queued for upload');
       Navigator.of(context).pop();
     }
   }

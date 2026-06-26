@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:edtech/app/app_colors.dart';
@@ -8,6 +10,7 @@ import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
 import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
+import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
 
 class ManageModuleEditCourseSheet extends StatefulWidget {
   final int courseId;
@@ -167,31 +170,36 @@ class _ManageModuleEditCourseSheetState
       final price = int.tryParse(_priceCtrl.text.trim());
       body['price'] = _type == 'FREE' ? 0 : (price ?? 0);
 
+      setState(() => _saving = true);
+
       final uploadProvider = context.read<CourseUploadProvider>();
       final thumbnail = uploadProvider.thumbnailFile;
       final video = uploadProvider.videoFile;
 
       if (thumbnail != null || video != null) {
-        body['thumbnailUrl'] = widget.courseThumbnailUrl;
-        body['introVideoUrl'] = widget.courseIntroVideoUrl;
-
-        setState(() => _saving = true);
-        final ok = await uploadProvider.uploadEditAssets(
-          thumbnail: thumbnail,
-          video: video,
-          callbackBody: body,
+        final queueProvider = context.read<UnifiedUploadQueueProvider>();
+        final urls = await queueProvider.queueCourseEditAssets(
+          thumbnailPath: thumbnail?.path,
+          videoPath: video?.path,
           courseId: widget.courseId,
-          onCourseUpdated: widget.onCourseRefreshed,
+          courseTitle: _titleCtrl.text.trim(),
         );
-        if (!ok) {
+
+        if (urls == null) {
           setState(() => _saving = false);
           return;
         }
-      } else {
-        setState(() => _saving = true);
-        await widget.onSave(body);
-        setState(() => _saving = false);
+
+        body['thumbnailUrl'] = urls['thumbnailFileUrl'] ?? widget.courseThumbnailUrl;
+        body['introVideoUrl'] = urls['videoFileUrl'] ?? widget.courseIntroVideoUrl;
       }
+
+      setState(() => _saving = false);
+
+      // Fire PUT in background — sheet pops immediately (matches original fire-and-forget UX)
+      unawaited(widget.onSave(body).then((ok) {
+        if (ok) widget.onCourseRefreshed.call();
+      }));
 
       if (mounted) {
         Navigator.of(context).pop();

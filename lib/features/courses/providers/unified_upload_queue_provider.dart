@@ -82,6 +82,25 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     _lastNativeTotal = 1;
     _nativeCompletionTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       try {
+        // Fix A: Get per-item status from native and sync SQLite
+        final queueData = await NativeUploadBridge.getQueueItems();
+        final items = queueData['items'] as List<dynamic>? ?? [];
+        bool hadCompleted = false;
+        for (final raw in items) {
+          final item = raw as Map<String, dynamic>;
+          final status = item['status'] as String? ?? 'pending';
+          if (status == 'completed') {
+            final queueId = item['id'] as int?;
+            if (queueId != null) {
+              await UploadQueueRepository.markCompleted(queueId);
+              hadCompleted = true;
+            }
+          }
+        }
+        if (hadCompleted) {
+          UploadQueueRepository.clearCompleted();
+        }
+
         final status = await NativeUploadBridge.getNativeQueueStatus();
         final total = (status['totalItems'] as num?)?.toInt() ?? 0;
         final completing = (status['completed'] as num?)?.toInt() ?? 0;
@@ -108,6 +127,22 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
   /// Video post: queue → fetch presigned URL → sync to native → start upload.
   Future<bool> addToQueue(File file, String title) async {
     try {
+      // All-status dedup: prevents same file being queued twice
+      final allItems = await UploadQueueRepository.getAll();
+      final existing = allItems.cast<UploadQueueItem?>().firstWhere(
+        (item) => item!.filePath == file.path && item.uploadType == 'video_post',
+        orElse: () => null,
+      );
+      if (existing != null) {
+        if (existing.status == 'pending' || existing.status == 'uploading') {
+          ToastService.showError('This file is already in the upload queue');
+          return false;
+        }
+        if (existing.id != null) {
+          await UploadQueueRepository.deleteItem(existing.id!);
+        }
+      }
+
       final duration = await VideoMetadataHelper.getDurationSeconds(file.path);
       final fileSize = await VideoMetadataHelper.getFileSizeBytes(file.path);
 
@@ -150,7 +185,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
   /// sequentially, keeping the UI non-blocking.
   Future<int> addCourseToQueue({
     required String thumbnailPath,
-    required String? videoPath,
+    String? videoPath,
     required String title,
     required String shortDescription,
     required String description,
@@ -159,6 +194,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     required String level,
     required String type,
     required double price,
+    String? introVideoUrl,
   }) async {
     final meta = CourseUploadMetadata(
       courseTitle: title,
@@ -169,7 +205,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       level: level,
       type: type,
       price: price,
-      videoPath: videoPath,
+      videoPath: introVideoUrl != null ? null : videoPath,
     );
 
     final metadataJson = jsonEncode(meta.toJson());
@@ -203,10 +239,12 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       return id;
     }
 
-    // Fetch presigned URLs for both thumbnail and video in one request
+    final bool externalIntro = introVideoUrl != null;
+    final String? effectiveVideoPath = externalIntro ? null : videoPath;
+
     final urls = await BackgroundUploadService.fetchCoursePresignedUrls(
       thumbnailPath: thumbnailPath,
-      videoPath: videoPath,
+      videoPath: effectiveVideoPath,
     );
 
     if (urls == null) {
@@ -217,40 +255,44 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
 
     final thumbnailUploadUrl = urls['thumbnailUploadUrl']!;
     final thumbnailFileUrl = urls['thumbnailFileUrl']!;
-    final videoUploadUrl = urls['videoUploadUrl'];
-    final videoFileUrl = urls['videoFileUrl'];
 
     final authToken = AuthController.accessToken;
 
-    // Queue video to native for background upload (no callback — just upload to S3)
-    if (videoPath != null && videoUploadUrl != null) {
-      await NativeUploadBridge.startNativeUpload(
-        filePath: videoPath,
-        uploadUrl: videoUploadUrl,
-        fileUrl: videoFileUrl,
-        title: 'Course intro video: $title',
-        contentType: BackgroundUploadService.inferVideoContentType(videoPath),
-        uploadType: 'course_video',
-        authToken: authToken,
-        metadata: metadataJson,
-      );
+    // Queue video to native (only when queued internally, not externally)
+    if (!externalIntro && videoPath != null) {
+      final videoUploadUrl = urls['videoUploadUrl'];
+      final videoFileUrl = urls['videoFileUrl'];
+      if (videoUploadUrl != null && videoFileUrl != null) {
+        await NativeUploadBridge.startNativeUpload(
+          filePath: videoPath,
+          uploadUrl: videoUploadUrl,
+          fileUrl: videoFileUrl,
+          title: 'Course intro video: $title',
+          contentType: BackgroundUploadService.inferVideoContentType(videoPath),
+          uploadType: 'course_video',
+          authToken: authToken,
+          metadata: metadataJson,
+        );
+      }
     }
 
-    // Build callback body with S3 URLs (video URL known from presigned response)
+    final resolvedIntroUrl = externalIntro
+        ? introVideoUrl
+        : urls['videoFileUrl'];
+
     final callbackBody = jsonEncode({
       'title': meta.courseTitle,
       'description': meta.description,
       'shortDescription': meta.shortDescription,
       'requirements': meta.requirements,
       'thumbnailUrl': thumbnailFileUrl,
-      if (videoFileUrl != null) 'introVideoUrl': videoFileUrl,
+      if (resolvedIntroUrl != null) 'introVideoUrl': resolvedIntroUrl,
       'language': meta.language,
       'level': meta.level.toUpperCase(),
       'type': meta.type.toUpperCase(),
       'price': meta.price,
     });
 
-    // Queue thumbnail to native (with callback that creates the course)
     final syncOk = await NativeUploadBridge.startNativeUpload(
       filePath: thumbnailPath,
       uploadUrl: thumbnailUploadUrl,
@@ -282,6 +324,193 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     _startNativeCompletionPolling();
     return id;
   }
+  /// Queue a course intro video for native background upload (S3 only, no callback).
+  /// Returns the S3 file URL (known from presigned response), or null on failure.
+  Future<String?> addCourseIntroVideo({
+    required String filePath,
+    required String title,
+  }) async {
+    try {
+      final allItems = await UploadQueueRepository.getAll();
+      final existing = allItems.cast<UploadQueueItem?>().firstWhere(
+        (item) => item!.filePath == filePath && item.uploadType == 'course_intro',
+        orElse: () => null,
+      );
+      if (existing != null) {
+        if (existing.status == 'pending' || existing.status == 'uploading') {
+          ToastService.showError('This video is already queued');
+          return null;
+        }
+        if (existing.id != null) {
+          await UploadQueueRepository.deleteItem(existing.id!);
+        }
+      }
+
+      final file = File(filePath);
+      final fileSize = await file.length();
+
+      final item = UploadQueueItem(
+        filePath: filePath,
+        title: title,
+        fileSize: fileSize,
+        status: 'pending',
+        uploadType: 'course_intro',
+      );
+
+      await UploadPathStorage.savePath(
+        filePath: filePath,
+        uploadType: 'course_intro',
+        title: title,
+      );
+
+      final id = await UploadQueueRepository.insert(item);
+      _queue = await UploadQueueRepository.getActive();
+      _checkNextActive();
+      notifyListeners();
+
+      final permission = await _ensureNotificationPermission();
+      if (!permission) {
+        ToastService.showSuccess('Video saved. Enable notifications to start upload.');
+        return null;
+      }
+
+      final urls = await BackgroundUploadService.fetchCoursePresignedUrls(
+        thumbnailPath: filePath,
+        videoPath: filePath,
+      );
+
+      if (urls == null) {
+        await _cleanupFailedUpload(id, filePath);
+        ToastService.showError('Failed to get upload URL');
+        return null;
+      }
+
+      final videoUploadUrl = urls['videoUploadUrl'];
+      final videoFileUrl = urls['videoFileUrl'];
+      if (videoUploadUrl == null || videoFileUrl == null) {
+        await _cleanupFailedUpload(id, filePath);
+        ToastService.showError('Server did not provide a video upload URL');
+        return null;
+      }
+
+      final authToken = AuthController.accessToken;
+
+      final syncOk = await NativeUploadBridge.startNativeUpload(
+        filePath: filePath,
+        uploadUrl: videoUploadUrl,
+        fileUrl: videoFileUrl,
+        title: 'Course intro: $title',
+        contentType: BackgroundUploadService.inferVideoContentType(filePath),
+        uploadType: 'course_intro',
+        authToken: authToken,
+      );
+      if (!syncOk) {
+        await _cleanupFailedUpload(id, filePath);
+        ToastService.showError('Failed to sync video to native layer');
+        return null;
+      }
+
+      await UploadQueueRepository.updateUrls(id: id, uploadUrl: videoUploadUrl, fileUrl: videoFileUrl);
+
+      final started = await NativeUploadBridge.startQueueProcessing();
+      if (!started) {
+        await _cleanupFailedUpload(id, filePath);
+        ToastService.showError('Failed to start native upload service');
+        return null;
+      }
+      ToastService.showSuccess('Intro video queued');
+      _startNativeCompletionPolling();
+      return videoFileUrl;
+    } catch (e) {
+      AppLogger.e('addCourseIntroVideo error: $e');
+      ToastService.showError('Failed to queue intro video');
+      return null;
+    }
+  }
+
+  /// Queue course edit assets (thumbnail + intro video) for native background upload.
+  /// Returns {thumbnailFileUrl, videoFileUrl} or null on failure.
+  /// Caller fires PUT /course with these URLs after this succeeds.
+  Future<Map<String, String?>?> queueCourseEditAssets({
+    String? thumbnailPath,
+    String? videoPath,
+    required int courseId,
+    required String courseTitle,
+  }) async {
+    if (thumbnailPath == null && videoPath == null) return {};
+
+    try {
+      final urls = await BackgroundUploadService.fetchCoursePresignedUrls(
+        thumbnailPath: thumbnailPath ?? videoPath!,
+        videoPath: videoPath,
+      );
+
+      if (urls == null) {
+        ToastService.showError('Failed to get upload URLs');
+        return null;
+      }
+
+      final authToken = AuthController.accessToken;
+      bool anyQueued = false;
+
+      if (thumbnailPath != null) {
+        final thumbUploadUrl = urls['thumbnailUploadUrl'];
+        final thumbFileUrl = urls['thumbnailFileUrl'];
+        if (thumbUploadUrl != null && thumbFileUrl != null) {
+          final ok = await NativeUploadBridge.startNativeUpload(
+            filePath: thumbnailPath,
+            uploadUrl: thumbUploadUrl,
+            fileUrl: thumbFileUrl,
+            title: 'Course thumbnail: $courseTitle',
+            contentType: BackgroundUploadService.inferImageContentType(thumbnailPath),
+            uploadType: 'course_thumb',
+            authToken: authToken,
+          );
+          anyQueued = ok || anyQueued;
+        }
+      }
+
+      if (videoPath != null) {
+        final videoUploadUrl = urls['videoUploadUrl'];
+        final videoFileUrl = urls['videoFileUrl'];
+        if (videoUploadUrl != null && videoFileUrl != null) {
+          final ok = await NativeUploadBridge.startNativeUpload(
+            filePath: videoPath,
+            uploadUrl: videoUploadUrl,
+            fileUrl: videoFileUrl,
+            title: 'Course intro: $courseTitle',
+            contentType: BackgroundUploadService.inferVideoContentType(videoPath),
+            uploadType: 'course_intro',
+            authToken: authToken,
+          );
+          anyQueued = ok || anyQueued;
+        }
+      }
+
+      if (!anyQueued) {
+        ToastService.showError('Failed to queue any assets');
+        return null;
+      }
+
+      final started = await NativeUploadBridge.startQueueProcessing();
+      if (!started) {
+        ToastService.showError('Failed to start native upload service');
+        return null;
+      }
+
+      _startNativeCompletionPolling();
+      ToastService.showSuccess('Assets queued for upload');
+
+      return {
+        'thumbnailFileUrl': urls['thumbnailFileUrl'],
+        'videoFileUrl': urls['videoFileUrl'],
+      };
+    } catch (e) {
+      AppLogger.e('queueCourseEditAssets error: $e');
+      ToastService.showError('Failed to queue course assets');
+      return null;
+    }
+  }
 
   /// Video lesson: queue → fetch presigned URL → sync native → start.
   Future<int> addModuleLessonToQueue({
@@ -296,6 +525,25 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       ToastService.showError('Video file not found');
       return 0;
     }
+
+    final allItems = await UploadQueueRepository.getAll();
+    final existing = allItems.cast<UploadQueueItem?>().firstWhere(
+      (item) => item!.filePath == videoPath && item.uploadType == 'module_lesson',
+      orElse: () => null,
+    );
+    if (existing != null) {
+      if (existing.status == 'pending' || existing.status == 'uploading') {
+        AppLogger.w('addModuleLessonToQueue: file already queued at $videoPath');
+        ToastService.showError('This video is already in the upload queue');
+        return 0;
+      }
+      // Terminal status — clean up
+      if (existing.id != null) {
+        AppLogger.i('addModuleLessonToQueue: cleaning up old entry (${existing.status}) for $videoPath');
+        await UploadQueueRepository.deleteItem(existing.id!);
+      }
+    }
+
     final meta = ModuleLessonMetadata(
       moduleId: moduleId,
       courseId: courseId,
@@ -381,7 +629,11 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       return 0;
     }
 
-    await UploadQueueRepository.updateUrls(id: id, uploadUrl: urls['uploadUrl']!, fileUrl: urls['fileUrl']!);
+    await UploadQueueRepository.updateUrls(
+      id: id,
+      uploadUrl: urls['uploadUrl']!,
+      fileUrl: urls['fileUrl']!,
+    );
 
     final started = await NativeUploadBridge.startQueueProcessing();
     if (!started) {
@@ -408,6 +660,24 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       ToastService.showError('Resource file not found');
       return 0;
     }
+
+    final allItems = await UploadQueueRepository.getAll();
+    final existing = allItems.cast<UploadQueueItem?>().firstWhere(
+      (item) => item!.filePath == filePath && item.uploadType == 'resource',
+      orElse: () => null,
+    );
+    if (existing != null) {
+      if (existing.status == 'pending' || existing.status == 'uploading') {
+        AppLogger.w('addResourceToQueue: file already queued at $filePath');
+        ToastService.showError('This resource is already in the upload queue');
+        return 0;
+      }
+      if (existing.id != null) {
+        AppLogger.i('addResourceToQueue: cleaning up old entry (${existing.status}) for $filePath');
+        await UploadQueueRepository.deleteItem(existing.id!);
+      }
+    }
+
     final meta = ModuleLessonMetadata(
       moduleId: moduleId,
       courseId: courseId,
@@ -493,7 +763,11 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
       return 0;
     }
 
-    await UploadQueueRepository.updateUrls(id: id, uploadUrl: urls['uploadUrl']!, fileUrl: urls['fileUrl']!);
+    await UploadQueueRepository.updateUrls(
+      id: id,
+      uploadUrl: urls['uploadUrl']!,
+      fileUrl: urls['fileUrl']!,
+    );
 
     final started = await NativeUploadBridge.startQueueProcessing();
     if (!started) {
@@ -799,6 +1073,18 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
           final meta = ModuleLessonMetadata.fromJson(jsonDecode(item.metadata!));
           extraFields = {'moduleID': meta.moduleId};
         }
+        break;
+      case 'course_intro':
+        endpoint = Urls.courseAssetsUploadUrl;
+        callbackUrl = null;
+        buildPayload = (name) => {
+          'thumbnailFilename': 'keep.jpg',
+          'thumbnailContentType': 'image/jpeg',
+          'videoFilename': name,
+          'videoContentType': BackgroundUploadService.inferVideoContentType(name),
+        };
+        inferContentType = BackgroundUploadService.inferVideoContentType;
+        buildCallbackBody = (_) => {};
         break;
       default:
         endpoint = Urls.videoPostAssetsUploadUrl;
