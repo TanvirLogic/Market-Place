@@ -178,7 +178,8 @@ class NativeUploadBridge {
     } catch (_) {}
   }
 
-  /// Get completed items manifest (items that finished while Flutter was away).
+  /// Get items that completed/failed while Flutter was away.
+  /// Reads from atomic marker files written by the :upload process.
   static Future<List<Map<String, dynamic>>> getCompletedItems() async {
     try {
       final result = await _channel.invokeMethod<String>('getNativeCompletedItems');
@@ -190,7 +191,7 @@ class NativeUploadBridge {
     }
   }
 
-  /// Acknowledge completed items — deletes the manifest after Flutter processes it.
+  /// Acknowledge and delete all marker files after Flutter processes them.
   static Future<void> acknowledgeCompletedItems() async {
     try {
       await _channel.invokeMethod('acknowledgeCompletedItems');

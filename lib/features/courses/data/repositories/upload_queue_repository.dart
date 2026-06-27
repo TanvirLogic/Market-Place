@@ -186,6 +186,15 @@ class UploadQueueRepository {
     return _db!;
   }
 
+  /// Trim the WAL file to prevent unbounded growth from frequent writes.
+  /// Call periodically (e.g. every 5 minutes during upload activity).
+  static Future<void> checkpointWal() async {
+    try {
+      final db = await database;
+      await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (_) {}
+  }
+
   static Future<Database> _initDb() async {
     final dir = await getApplicationDocumentsDirectory();
     final path = '${dir.path}${Platform.pathSeparator}upload_queue.db';
@@ -298,6 +307,8 @@ class UploadQueueRepository {
       onConfigure: (db) async {
         await db.rawQuery('PRAGMA journal_mode=WAL');
         await db.rawQuery('PRAGMA busy_timeout=5000');
+        await db.rawQuery('PRAGMA auto_vacuum=INCREMENTAL');
+        await db.rawQuery('PRAGMA soft_heap_limit=8388608'); // 8MB max heap
       },
     );
   }
@@ -565,6 +576,27 @@ class UploadQueueRepository {
     final db = await database;
     await db.delete('upload_queue',
         where: 'status = ?', whereArgs: ['completed']);
+    await _reclaimSpace();
+  }
+
+  /// Delete items with terminal status older than [days] days.
+  static Future<void> deleteOldItems({int days = 7}) async {
+    final db = await database;
+    final cutoff = DateTime.now().subtract(Duration(days: days)).toIso8601String();
+    await db.delete(
+      'upload_queue',
+      where: "status IN ('completed', 'failed', 'cancelled') AND lastUpdated < ?",
+      whereArgs: [cutoff],
+    );
+    await _reclaimSpace();
+  }
+
+  /// Reclaim free pages from the database file after bulk deletes.
+  static Future<void> _reclaimSpace() async {
+    try {
+      final db = await database;
+      await db.rawQuery('PRAGMA incremental_vacuum(0)');
+    } catch (_) {}
   }
 
   static Future<int> countPending() async {
@@ -608,6 +640,62 @@ class UploadQueueRepository {
         (heartbeatMs IS NULL AND lastUpdated < ?)
       )
     ''', [now.toIso8601String(), heartbeatCutoff, fallbackCutoff]);
+  }
+
+  /// Delete file from cache/temp if it lives inside our app directories.
+  /// Safe to call on any file path — only deletes if path is in cache or app docs.
+  static Future<void> cleanupFileIfCached(String filePath) async {
+    try {
+      final dirs = await Future.wait([
+        getTemporaryDirectory(),
+        getApplicationDocumentsDirectory(),
+      ]);
+      final file = File(filePath);
+      if (!file.existsSync()) return;
+      final resolved = file.resolveSymbolicLinksSync();
+      if (dirs.any((d) => resolved.startsWith(d.path))) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  /// Get all file paths currently tracked by the queue (all statuses).
+  static Future<Set<String>> getAllTrackedPaths() async {
+    final db = await database;
+    final maps = await db.rawQuery('SELECT DISTINCT filePath FROM upload_queue');
+    return maps.map((m) => m['filePath'] as String).toSet();
+  }
+
+  /// Scan temp/cache directories and delete files not tracked by any SQLite row.
+  /// Skips files modified within the last 60s to avoid races with ImagePicker copies.
+  /// Safe to call on startup — only removes truly orphaned copies.
+  static Future<void> cleanupOrphanedCacheFiles() async {
+    try {
+      final tracked = await getAllTrackedPaths();
+      final dirs = await Future.wait([
+        getTemporaryDirectory(),
+        getApplicationDocumentsDirectory(),
+      ]);
+      final now = DateTime.now();
+      for (final dir in dirs) {
+        if (!dir.existsSync()) continue;
+        final files = dir.listSync(recursive: true).whereType<File>();
+        for (final file in files) {
+          if (now.difference(file.lastModifiedSync()).inSeconds < 60) continue;
+          final path = file.resolveSymbolicLinksSync();
+          if (!tracked.contains(path)) {
+            await file.delete();
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Full startup cleanup: old items + orphaned cache files + WAL trim.
+  static Future<void> runStartupCleanup() async {
+    await deleteOldItems();
+    await cleanupOrphanedCacheFiles();
+    await checkpointWal();
   }
 
   static Future<void> close() async {

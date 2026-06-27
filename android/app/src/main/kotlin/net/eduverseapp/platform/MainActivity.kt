@@ -10,6 +10,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val videoChannel = "eduverse/video_metadata"
@@ -95,7 +96,7 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
 
-                        // Persist state for crash survival
+                        // Persist state for crash survival (main process)
                         val state = UploadStateManager.load(this)
                         val existingItems = state?.items?.toMutableList() ?: mutableListOf()
                         val newItem = PendingUpload(
@@ -116,6 +117,28 @@ class MainActivity : FlutterActivity() {
                         existingItems.removeAll { it.id == itemId }
                         existingItems.add(newItem)
                         UploadStateManager.save(this, existingItems, 0, true)
+
+                        // Forward to :upload process via intent
+                        val intent = Intent(this, UploadReschedulerService::class.java).apply {
+                            action = UploadReschedulerService.ACTION_START_UPLOAD
+                            putExtra(UploadReschedulerService.EXTRA_FILE_PATH, filePath)
+                            putExtra(UploadReschedulerService.EXTRA_UPLOAD_URL, uploadUrl)
+                            fileUrl?.let { putExtra(UploadReschedulerService.EXTRA_FILE_URL, it) }
+                            title?.let { putExtra(UploadReschedulerService.EXTRA_TITLE, it) }
+                            contentType?.let { putExtra(UploadReschedulerService.EXTRA_CONTENT_TYPE, it) }
+                            putExtra(UploadReschedulerService.EXTRA_UPLOAD_TYPE, uploadType)
+                            authToken?.let { putExtra(UploadReschedulerService.EXTRA_AUTH_TOKEN, it) }
+                            callbackUrl?.let { putExtra(UploadReschedulerService.EXTRA_CALLBACK_URL, it) }
+                            callbackBody?.let { putExtra(UploadReschedulerService.EXTRA_CALLBACK_BODY, it) }
+                            metadata?.let { putExtra(UploadReschedulerService.EXTRA_METADATA, it) }
+                            putExtra(UploadReschedulerService.EXTRA_ITEM_ID, itemId)
+                            uploadId?.let { putExtra(UploadReschedulerService.EXTRA_UPLOAD_ID, it) }
+                        }
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
 
                         result.success(true)
                     }
@@ -194,14 +217,16 @@ class MainActivity : FlutterActivity() {
 
                     "getNativeQueueItems" -> {
                         val state = UploadStateManager.load(this)
+                        val progressMap = readProgressMarkers()
                         if (state != null) {
                             val itemsArr = JSONArray()
                             for (item in state.items) {
+                                val realProgress = progressMap[item.id] ?: item.progress
                                 val obj = JSONObject().apply {
                                     put("id", item.id)
                                     put("title", item.title)
                                     put("status", item.status)
-                                    put("progress", item.progress)
+                                    put("progress", realProgress)
                                     put("uploadType", item.uploadType)
                                     put("fileUrl", item.fileUrl ?: "")
                                     put("errorMessage", item.errorMessage ?: "")
@@ -283,20 +308,12 @@ class MainActivity : FlutterActivity() {
                     }
 
                     "getNativeCompletedItems" -> {
-                        val completed = UploadStateManager.loadCompletedItems(this)
-                        val arr = JSONArray()
-                        for ((id, fileUrl) in completed) {
-                            val obj = JSONObject().apply {
-                                put("id", id)
-                                put("fileUrl", fileUrl)
-                            }
-                            arr.put(obj)
-                        }
-                        result.success(arr.toString())
+                        val markers = readMarkerFiles()
+                        result.success(JSONArray(markers).toString())
                     }
 
                     "acknowledgeCompletedItems" -> {
-                        UploadStateManager.clearCompletedItems(this)
+                        deleteMarkerFiles()
                         result.success(true)
                     }
 
@@ -374,6 +391,49 @@ class MainActivity : FlutterActivity() {
             }
             UploadStateManager.save(this, items, 0, false)
         } catch (_: Exception) {}
+    }
+
+    /// Read progress marker files. Returns a map of itemId → progress (0-100).
+    private fun readProgressMarkers(): Map<Long, Int> {
+        val dir = File(filesDir, UploadReschedulerService.MARKERS_DIR)
+        if (!dir.exists()) return emptyMap()
+        val result = mutableMapOf<Long, Int>()
+        for (file in dir.listFiles() ?: emptyArray()) {
+            if (!file.name.endsWith(".progress") || file.name.endsWith(".tmp")) continue
+            val id = file.nameWithoutExtension.toLongOrNull() ?: continue
+            try {
+                val text = file.readText().trim()
+                val progress = text.toIntOrNull() ?: continue
+                result[id] = progress
+            } catch (_: Exception) {}
+        }
+        return result
+    }
+
+    /// Read all marker files from the upload markers directory.
+    /// Returns a list of JSON objects, one per marker file.
+    /// Files are named {id}.completed or {id}.failed.
+    private fun readMarkerFiles(): List<JSONObject> {
+        val dir = File(filesDir, UploadReschedulerService.MARKERS_DIR)
+        if (!dir.exists()) return emptyList()
+        val result = mutableListOf<JSONObject>()
+        for (file in dir.listFiles() ?: emptyArray()) {
+            if (file.name.endsWith(".tmp")) continue
+            try {
+                val content = file.readText()
+                result.add(JSONObject(content))
+            } catch (_: Exception) {}
+        }
+        return result
+    }
+
+    /// Delete all marker files after Flutter has acknowledged them.
+    private fun deleteMarkerFiles() {
+        val dir = File(filesDir, UploadReschedulerService.MARKERS_DIR)
+        if (!dir.exists()) return
+        for (file in dir.listFiles() ?: emptyArray()) {
+            try { file.delete() } catch (_: Exception) {}
+        }
     }
 
     private fun getFileSize(context: Context, uriString: String): Long {

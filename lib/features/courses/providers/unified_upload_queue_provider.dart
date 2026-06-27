@@ -85,8 +85,9 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
         final alive = await NativeUploadBridge.ping();
         if (alive) {
           _missedHeartbeats = 0;
-          // Read completion manifest for items that finished since last poll
+          await _updateHeartbeats();
           await _processCompletedManifest();
+          await _periodicCheckpoint();
           return;
         }
       } catch (_) {}
@@ -99,94 +100,108 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     });
   }
 
+  /// Periodic storage maintenance:
+  ///   - WAL checkpoint every ~5 min (30 ticks)
+  ///   - Full cleanup (old items + orphaned cache) every ~8 min (50 ticks)
+  int _heartbeatTick = 0;
+  Future<void> _periodicCheckpoint() async {
+    _heartbeatTick++;
+    if (_heartbeatTick >= 50) {
+      _heartbeatTick = 0;
+      await UploadQueueRepository.runStartupCleanup();
+    } else if (_heartbeatTick % 30 == 0) {
+      await UploadQueueRepository.checkpointWal();
+    }
+  }
+
+  Future<void> _updateHeartbeats() async {
+    try {
+      final uploading = await UploadQueueRepository.getByStatus('uploading');
+      for (final item in uploading) {
+        await UploadQueueRepository.updateHeartbeat(item.id!);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _processCompletedManifest() async {
     try {
-      final completedItems = await NativeUploadBridge.getCompletedItems();
-      if (completedItems.isEmpty) return;
+      final markers = await NativeUploadBridge.getCompletedItems();
+      if (markers.isEmpty) return;
       bool updated = false;
-      for (final entry in completedItems) {
+      bool hasCompleted = false;
+      for (final entry in markers) {
         final itemId = entry['id'] as int?;
+        final error = entry['error'] as String?;
         final fileUrl = entry['fileUrl'] as String?;
         if (itemId == null) continue;
         final idx = _queue.indexWhere((item) => item.id == itemId);
-        if (idx >= 0 && _queue[idx].status != 'completed') {
-          await UploadQueueRepository.markCompleted(itemId);
-          _queue[idx] = _queue[idx].copyWith(status: 'completed', fileUrl: fileUrl ?? _queue[idx].fileUrl);
-          if (_activeItem?.id == itemId) {
-            _activeItem = null;
-            _activeProgress = 0;
+        if (idx < 0) continue;
+        if (error != null) {
+          if (_queue[idx].status != 'completed' && _queue[idx].status != 'failed' && _queue[idx].status != 'cancelled') {
+            await UploadQueueRepository.markFailed(itemId, error);
+            _queue[idx] = _queue[idx].copyWith(status: 'failed', errorMessage: error);
+            updated = true;
           }
-          updated = true;
+        } else {
+          if (_queue[idx].status != 'completed' && _queue[idx].status != 'failed' && _queue[idx].status != 'cancelled') {
+            await UploadQueueRepository.markCompleted(itemId);
+            await _cleanupCachedFile(_queue[idx].filePath);
+            _queue[idx] = _queue[idx].copyWith(
+              status: 'completed',
+              fileUrl: fileUrl ?? _queue[idx].fileUrl,
+            );
+            if (_activeItem?.id == itemId) {
+              _activeItem = null;
+              _activeProgress = 0;
+            }
+            updated = true;
+            hasCompleted = true;
+          }
         }
       }
       if (updated) {
         await NativeUploadBridge.acknowledgeCompletedItems();
         notifyListeners();
-        ToastService.showSuccess('Upload completed');
+        if (hasCompleted) ToastService.showSuccess('Upload completed');
       }
     } catch (_) {}
   }
 
+  DateTime _lastRecovery = DateTime(2000);
+  static const Duration _recoveryCooldown = Duration(seconds: 30);
+
   Future<void> _recoverFromHeartbeatFailure() async {
+    // Backoff: don't cascade recoveries within the cooldown window
+    final sinceLast = DateTime.now().difference(_lastRecovery);
+    if (sinceLast < _recoveryCooldown) return;
+    _lastRecovery = DateTime.now();
+
     try {
+      // Process any completion markers first
+      await _processCompletedManifest();
+      // Reset stale uploading items — heartbeatMs ensures only truly dead items
       await UploadQueueRepository.resetStaleUploading();
       _queue = await UploadQueueRepository.getActive();
-      final pendingCount = await UploadQueueRepository.countPending();
-      if (pendingCount > 0) {
-        final nativeItems = await NativeUploadBridge.getPendingUploads();
-        for (final native in nativeItems) {
-          final status = native['status'] as String? ?? '';
-          final id = native['id'] as int?;
-          if (id == null) continue;
-          if (status == 'completed') {
-            final item = await _getItemById(id);
-            if (item != null && item.uploadUrl != null) {
-              final s3Ok = await BackgroundUploadService.verifyFileExists(item.uploadUrl!);
-              if (s3Ok) {
-                await UploadQueueRepository.markCompleted(id);
-              }
-            }
-          }
-        }
-        _queue = await UploadQueueRepository.getActive();
-        final stillPending = await UploadQueueRepository.countPending();
-        if (stillPending > 0) {
-          await _syncPendingToNative();
-        }
+      // Re-sync all pending items to the native service (which restarts fresh)
+      final pendingItems = await UploadQueueRepository.getByStatus('pending');
+      if (pendingItems.isNotEmpty) {
+        final nativeQueueJson = jsonEncode(pendingItems.map((item) => {
+          'id': item.id,
+          'filePath': item.filePath,
+          'title': item.title,
+          'uploadUrl': item.uploadUrl,
+          'fileUrl': item.fileUrl,
+          'contentType': _inferContentType(item.filePath),
+          'uploadType': item.uploadType,
+          'metadata': item.metadata,
+          'uploadId': item.uploadId,
+        }).toList());
+        await NativeUploadBridge.syncQueueToNative(nativeQueueJson);
+        await NativeUploadBridge.startQueueProcessing();
       }
       notifyListeners();
     } catch (e) {
       AppLogger.e('Heartbeat recovery failed: $e');
-    }
-  }
-
-  Future<void> _syncPendingToNative() async {
-    final pendingItems = await UploadQueueRepository.getByStatus('pending');
-    if (pendingItems.isEmpty) return;
-    final nativeQueueJson = jsonEncode(pendingItems.map((item) => {
-      'id': item.id,
-      'filePath': item.filePath,
-      'title': item.title,
-      'uploadUrl': item.uploadUrl,
-      'fileUrl': item.fileUrl,
-      'contentType': _inferContentType(item.filePath),
-      'uploadType': item.uploadType,
-      'metadata': item.metadata,
-      'uploadId': item.uploadId,
-    }).toList());
-    await NativeUploadBridge.syncQueueToNative(nativeQueueJson);
-    await NativeUploadBridge.startQueueProcessing();
-  }
-
-  Future<UploadQueueItem?> _getItemById(int id) async {
-    try {
-      final all = await UploadQueueRepository.getAll();
-      return all.cast<UploadQueueItem?>().firstWhere(
-        (i) => i!.id == id,
-        orElse: () => null,
-      );
-    } catch (_) {
-      return null;
     }
   }
 
@@ -808,6 +823,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
 
   Future<void> _cleanupFailedUpload(int id, String filePath) async {
     await UploadQueueRepository.markFailed(id, 'Upload setup failed');
+    await UploadQueueRepository.cleanupFileIfCached(filePath);
     _queue = await UploadQueueRepository.getActive();
     notifyListeners();
   }
@@ -1176,6 +1192,7 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
         status: 'completed',
         fileUrl: fileUrl,
       );
+      _cleanupCachedFile(_queue[idx].filePath);
     }
     if (_activeItem?.id == id) {
       _activeItem = null;
@@ -1183,6 +1200,12 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     }
     notifyListeners();
     ToastService.showSuccess('Upload completed');
+  }
+
+  /// Delete local video file if it was copied to our cache/temp dir
+  /// (e.g. by ImagePicker). Keeps gallery-original files untouched.
+  Future<void> _cleanupCachedFile(String filePath) async {
+    await UploadQueueRepository.cleanupFileIfCached(filePath);
   }
 
   void onNativeUploadFailed(int id, String error) {

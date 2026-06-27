@@ -57,19 +57,31 @@ class UploadReschedulerService : Service() {
                 val uploadType = intent.getStringExtra(EXTRA_UPLOAD_TYPE) ?: "video_post"
                 val metadata = intent.getStringExtra(EXTRA_METADATA)
                 val itemId = intent.getLongExtra(EXTRA_ITEM_ID, -1L)
+                val fileUrl = intent.getStringExtra(EXTRA_FILE_URL)
+                val authToken = intent.getStringExtra(EXTRA_AUTH_TOKEN)
+                val callbackUrl = intent.getStringExtra(EXTRA_CALLBACK_URL)
+                val callbackBody = intent.getStringExtra(EXTRA_CALLBACK_BODY)
+                val uploadId = intent.getStringExtra(EXTRA_UPLOAD_ID)
 
                 if (filePath != null && uploadUrl != null) {
+                    val item = PendingUpload(
+                        id = itemId, filePath = filePath, title = title ?: "Upload",
+                        uploadUrl = uploadUrl, fileUrl = fileUrl,
+                        contentType = contentType, uploadType = uploadType,
+                        authToken = authToken, callbackUrl = callbackUrl,
+                        callbackBody = callbackBody, metadata = metadata,
+                        uploadId = uploadId,
+                        status = UploadConstants.STATUS_PENDING,
+                    )
+                    // Save to in-memory state so it survives busy processing
+                    val currentState = UploadStateManager.load(this)
+                    val existingItems = (currentState?.items ?: emptyList()).toMutableList()
+                    existingItems.removeAll { it.id == item.id }
+                    existingItems.add(item)
+                    UploadStateManager.save(this, existingItems, 0, true)
+
                     startForegroundSafe("Starting: $title", 0, true)
-                    processQueue(queue = listOf(
-                        PendingUpload(
-                            id = itemId, filePath = filePath, title = title ?: "Upload",
-                            uploadUrl = uploadUrl, fileUrl = null,
-                            contentType = contentType, uploadType = uploadType,
-                            authToken = null, callbackUrl = null, callbackBody = null,
-                            metadata = metadata,
-                            status = UploadConstants.STATUS_PENDING,
-                        )
-                    ))
+                    processQueue(queue = listOf(item))
                 }
             }
 
@@ -412,6 +424,7 @@ class UploadReschedulerService : Service() {
                                 UploadStateManager.updateItemProgress(
                                     this@UploadReschedulerService, itemId, progress
                                 )
+                                writeProgressMarker(itemId, progress)
                             }
                             val label = "Uploading $title ($queueIndex/$queueTotal)"
                             val notif = buildNotification(label, progress, false)
@@ -498,14 +511,56 @@ class UploadReschedulerService : Service() {
         return null
     }
 
-        private fun markItemCompleted(item: PendingUpload) {
+    private fun markItemCompleted(item: PendingUpload) {
         UploadStateManager.markItemStatus(this, item.id, UploadConstants.STATUS_COMPLETED)
-        // Persist to completion manifest so recovery can find it after state file is cleared
-        UploadStateManager.saveCompletedItem(this, item.id, item.fileUrl)
+        deleteProgressMarker(item.id)
+        writeMarkerFile(item, "completed") { JSONObject().apply {
+            put("id", item.id)
+            put("fileUrl", item.fileUrl ?: "")
+        } }
     }
 
     private fun markItemFailed(item: PendingUpload, error: String) {
         UploadStateManager.markItemStatus(this, item.id, UploadConstants.STATUS_FAILED, error)
+        deleteProgressMarker(item.id)
+        writeMarkerFile(item, "failed") { JSONObject().apply {
+            put("id", item.id)
+            put("error", error)
+        } }
+    }
+
+    /// Write atomic progress marker so the main process can show real-time progress.
+    private fun writeProgressMarker(itemId: Long, progress: Int) {
+        try {
+            val dir = java.io.File(filesDir, MARKERS_DIR)
+            dir.mkdirs()
+            val tmp = java.io.File(dir, "${itemId}.progress.tmp")
+            val finalFile = java.io.File(dir, "${itemId}.progress")
+            tmp.writeText(progress.toString())
+            tmp.renameTo(finalFile)
+        } catch (_: Exception) {}
+    }
+
+    /// Delete progress marker for an item (called on terminal state).
+    private fun deleteProgressMarker(itemId: Long) {
+        try {
+            val dir = java.io.File(filesDir, MARKERS_DIR)
+            java.io.File(dir, "${itemId}.progress").delete()
+            java.io.File(dir, "${itemId}.progress.tmp").delete()
+        } catch (_: Exception) {}
+    }
+
+    /// Write an atomic marker file so the main process can discover completed/failed items.
+    /// Writes to a temp file first, then atomically renames to avoid partial reads.
+    private fun writeMarkerFile(item: PendingUpload, suffix: String, block: () -> JSONObject) {
+        try {
+            val dir = java.io.File(filesDir, MARKERS_DIR)
+            dir.mkdirs()
+            val tmp = java.io.File(dir, "${item.id}.$suffix.tmp")
+            val finalFile = java.io.File(dir, "${item.id}.$suffix")
+            tmp.writeText(block().toString())
+            tmp.renameTo(finalFile)
+        } catch (_: Exception) {}
     }
 
     private fun persistCurrentState(queue: MutableList<PendingUpload>, activeIndex: Int) {
@@ -636,6 +691,7 @@ class UploadReschedulerService : Service() {
 
     companion object {
         const val ALIVE_MARKER_FILE = "upload_service_alive.marker"
+        const val MARKERS_DIR = "upload_markers"
         const val CHANNEL_ID = "eduverse_upload_service"
         const val COMPLETION_CHANNEL_ID = "eduverse_upload_complete"
         const val NOTIFICATION_ID = 1001
@@ -652,6 +708,11 @@ class UploadReschedulerService : Service() {
         const val EXTRA_UPLOAD_TYPE = "uploadType"
         const val EXTRA_METADATA = "metadata"
         const val EXTRA_ITEM_ID = "itemId"
+        const val EXTRA_FILE_URL = "fileUrl"
+        const val EXTRA_AUTH_TOKEN = "authToken"
+        const val EXTRA_CALLBACK_URL = "callbackUrl"
+        const val EXTRA_CALLBACK_BODY = "callbackBody"
+        const val EXTRA_UPLOAD_ID = "uploadId"
         const val EXTRA_QUEUE_JSON = "queueJson"
     }
 }

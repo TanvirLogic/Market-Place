@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:edtech/features/courses/data/models/upload_task.dart';
 import 'package:edtech/features/courses/data/repositories/upload_queue_repository.dart';
@@ -577,45 +576,36 @@ class ManageModuleProvider extends ChangeNotifier {
     int queueId, {
     UnifiedUploadQueueProvider? queueProvider,
   }) async {
+    if (_isQueuing) {
+      ToastService.showError('Please wait, another operation is in progress');
+      return;
+    }
     final pending = _pendingLessons[queueId];
     if (pending == null) return;
+    if (queueProvider == null) return;
 
-    await UploadQueueRepository.updateStatus(id: queueId, status: 'pending');
+    _isQueuing = true;
+    try {
+      // Delegate to the central queue provider so presigned URLs are refreshed
+      // and the heartbeat timer stays active
+      await queueProvider.retryFailed(queueId);
 
-    // Resync the active queue to native (same pattern as native_init.dart)
-    final activeItems = await UploadQueueRepository.getActive();
-    final nativeQueueJson = jsonEncode(
-      activeItems
-          .map(
-            (item) => {
-              'id': item.id,
-              'filePath': item.filePath,
-              'title': item.title,
-              'uploadUrl': item.uploadUrl,
-              'fileUrl': item.fileUrl,
-              'contentType': 'application/octet-stream',
-              'uploadType': item.uploadType,
-              'metadata': item.metadata,
-            },
-          )
-          .toList(),
-    );
-    await NativeUploadBridge.syncQueueToNative(nativeQueueJson);
-    await NativeUploadBridge.startQueueProcessing();
-
-    _pendingLessons[queueId] = PendingLesson(
-      queueId: pending.queueId,
-      lessonId: pending.lessonId,
-      title: pending.title,
-      type: pending.type,
-      filePath: pending.filePath,
-      moduleId: pending.moduleId,
-      uploadProgress: 0.0,
-      uploadStatus: 'pending',
-    );
-    _startProgressPolling();
-    notifyListeners();
-    ToastService.showInfo('Retrying upload...');
+      _pendingLessons[queueId] = PendingLesson(
+        queueId: pending.queueId,
+        lessonId: pending.lessonId,
+        title: pending.title,
+        type: pending.type,
+        filePath: pending.filePath,
+        moduleId: pending.moduleId,
+        uploadProgress: 0.0,
+        uploadStatus: 'pending',
+      );
+      _startProgressPolling();
+      notifyListeners();
+      ToastService.showInfo('Retrying upload...');
+    } finally {
+      _isQueuing = false;
+    }
   }
 
   Future<bool> addVideoLesson(
@@ -715,7 +705,6 @@ class ManageModuleProvider extends ChangeNotifier {
             pending.uploadStatus = 'completed';
             updated = true;
             completedIds.add(queueId);
-            await UploadQueueRepository.markCompleted(queueId);
             if (_notifiedCompletions.add(queueId)) {
               ToastService.showSuccess('Upload completed successfully');
             }
@@ -726,37 +715,23 @@ class ManageModuleProvider extends ChangeNotifier {
           }
         }
 
-        // Clean up items where SQLite status is terminal (completed/failed)
-        // but in-memory _pendingLessons still tracks them. This prevents stuck
-        // UI state when the polling detects native completion after a delay.
+        // Remove completed items from in-memory state only.
+        // Failed items stay visible so the user can retry them.
         if (_pendingLessons.isNotEmpty) {
           final allDb = await UploadQueueRepository.getAll();
           final dbMap = {for (final item in allDb) item.id: item};
-          final orphanedIds = <int>[];
           for (final entry in _pendingLessons.entries) {
             final dbItem = dbMap[entry.key];
-            if (dbItem == null || dbItem.status == 'completed' || dbItem.status == 'failed') {
-              orphanedIds.add(entry.key);
-              if (dbItem?.status == 'completed' && _notifiedCompletions.add(entry.key)) {
+            if (dbItem?.status == 'completed') {
+              completedIds.add(entry.key);
+              if (_notifiedCompletions.add(entry.key)) {
                 ToastService.showSuccess('Upload completed successfully');
               }
             }
           }
-          for (final queueId in orphanedIds) {
-            _pendingLessons.remove(queueId);
-          }
-          if (orphanedIds.isNotEmpty) {
-            completedIds.addAll(orphanedIds);
-            updated = true;
-          }
         }
-
-        // Remove completed items — failed items stay visible
         for (final queueId in completedIds) {
           _pendingLessons.remove(queueId);
-        }
-        if (completedIds.isNotEmpty) {
-          UploadQueueRepository.clearCompleted();
         }
 
         if (completedIds.isNotEmpty) {
@@ -799,8 +774,9 @@ class ManageModuleProvider extends ChangeNotifier {
       return false;
     }
 
-    // Terminal status — clean up old row and allow re-upload
+    // Terminal status — clean up old row and cached file, allow re-upload
     if (existing.id != null) {
+      await UploadQueueRepository.cleanupFileIfCached(existing.filePath);
       await UploadQueueRepository.deleteItem(existing.id!);
     }
     _pendingLessons.remove(existing.id);
