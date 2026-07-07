@@ -82,6 +82,127 @@ class CourseUploadMetadata {
       );
 }
 
+/// Response from the unified init endpoint.
+/// The same endpoint returns either a direct-single upload URL or multipart info.
+class UploadInitResponse {
+  final bool isMultipart;
+
+  // For single upload (< 15MB)
+  final String? uploadUrl;
+
+  // Always present
+  final String fileUrl;
+
+  // S3 object key
+  final String? key;
+
+  // Human-readable expiry (e.g. "24 hours")
+  final String? expiresIn;
+
+  // For multipart upload (>= 15MB)
+  final String? s3UploadId;
+  final int totalParts;
+  final List<PartPresignedUrl> parts;
+
+  const UploadInitResponse({
+    required this.isMultipart,
+    this.uploadUrl,
+    required this.fileUrl,
+    this.key,
+    this.expiresIn,
+    this.s3UploadId,
+    this.totalParts = 0,
+    this.parts = const [],
+  });
+
+  factory UploadInitResponse.fromJson(Map<String, dynamic> json) {
+    final isMultipart = json['isMultipart'] as bool? ?? false;
+    final parts = (json['parts'] as List?)
+            ?.map((p) => PartPresignedUrl.fromJson(p as Map<String, dynamic>))
+            .toList() ??
+        [];
+    return UploadInitResponse(
+      isMultipart: isMultipart,
+      uploadUrl: json['uploadUrl'] as String?,
+      fileUrl: json['fileUrl'] as String,
+      key: json['key'] as String?,
+      expiresIn: json['expiresIn'] as String?,
+      s3UploadId: isMultipart ? json['uploadId'] as String? : null,
+      totalParts: json['totalParts'] as int? ?? parts.length,
+      parts: parts,
+    );
+  }
+}
+
+class MultipartInitResult {
+  final String s3UploadId;
+  final int partSize;
+  final int totalParts;
+  final List<PartPresignedUrl> parts;
+
+  const MultipartInitResult({
+    required this.s3UploadId,
+    required this.partSize,
+    required this.totalParts,
+    required this.parts,
+  });
+
+  Map<String, dynamic> toJson() => {
+    's3UploadId': s3UploadId,
+    'partSize': partSize,
+    'totalParts': totalParts,
+    'parts': parts.map((p) => p.toJson()).toList(),
+  };
+
+  factory MultipartInitResult.fromJson(Map<String, dynamic> json) =>
+      MultipartInitResult(
+        s3UploadId: json['uploadId'] as String,
+        partSize: 0,
+        totalParts: json['totalParts'] as int,
+        parts: (json['parts'] as List)
+            .map((p) => PartPresignedUrl.fromJson(p as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+class PartPresignedUrl {
+  final int partNumber;
+  final String uploadUrl;
+
+  const PartPresignedUrl({
+    required this.partNumber,
+    required this.uploadUrl,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'partNumber': partNumber,
+    'uploadUrl': uploadUrl,
+  };
+
+  factory PartPresignedUrl.fromJson(Map<String, dynamic> json) =>
+      PartPresignedUrl(
+        partNumber: json['partNumber'] as int,
+        uploadUrl: json['uploadUrl'] as String,
+      );
+}
+
+class PartETag {
+  final int partNumber;
+  final String eTag;
+
+  const PartETag({required this.partNumber, required this.eTag});
+
+  Map<String, dynamic> toJson() => {
+    'partNumber': partNumber,
+    'eTag': eTag,
+  };
+
+  factory PartETag.fromJson(Map<String, dynamic> json) => PartETag(
+    partNumber: json['partNumber'] as int,
+    eTag: json['eTag'] as String,
+  );
+}
+
 class ModuleLessonMetadata {
   final int moduleId;
   final int courseId;

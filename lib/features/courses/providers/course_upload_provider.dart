@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -169,16 +170,20 @@ class CourseUploadProvider extends ChangeNotifier {
     if (thumbnail != null) {
       presignedBody['thumbnailFilename'] = thumbnail.name;
       presignedBody['thumbnailContentType'] = _inferImageContentType(thumbnail.name);
+      presignedBody['thumbnailFileSize'] = await thumbnail.length();
     } else {
       presignedBody['thumbnailFilename'] = 'keep.jpg';
       presignedBody['thumbnailContentType'] = 'image/jpeg';
+      presignedBody['thumbnailFileSize'] = 0;
     }
     if (video != null) {
       presignedBody['videoFilename'] = video.name;
       presignedBody['videoContentType'] = _inferVideoContentType(video.name);
+      presignedBody['videoFileSize'] = await video.length();
     } else {
       presignedBody['videoFilename'] = 'keep.mp4';
       presignedBody['videoContentType'] = 'video/mp4';
+      presignedBody['videoFileSize'] = 0;
     }
 
     final urlsResponse = await getNetworkCaller().postRequest(
@@ -202,17 +207,25 @@ class CourseUploadProvider extends ChangeNotifier {
 
     // Collect upload info for background processing
     final uploads = <_PendingUpload>[];
+    final multipartUploads = <_PendingMultipartUpload>[];
     if (thumbnail != null) {
       final info = innerData['thumbnail'] as Map<String, dynamic>?;
       final uploadUrl = info?['uploadUrl'] as String?;
       final fileUrl = info?['fileUrl'] as String?;
-      if (uploadUrl != null && fileUrl != null) {
+      if (fileUrl != null) {
         callbackBody['thumbnailUrl'] = fileUrl;
-        uploads.add(_PendingUpload(
-          file: thumbnail,
-          uploadUrl: uploadUrl,
-          contentType: _inferImageContentType(thumbnail.name),
-        ));
+        if (info?['isMultipart'] as bool? ?? false) {
+          multipartUploads.add(_PendingMultipartUpload(
+            file: thumbnail,
+            assetInfo: info!,
+          ));
+        } else if (uploadUrl != null) {
+          uploads.add(_PendingUpload(
+            file: thumbnail,
+            uploadUrl: uploadUrl,
+            contentType: _inferImageContentType(thumbnail.name),
+          ));
+        }
       }
     }
 
@@ -220,17 +233,24 @@ class CourseUploadProvider extends ChangeNotifier {
       final info = innerData['video'] as Map<String, dynamic>?;
       final uploadUrl = info?['uploadUrl'] as String?;
       final fileUrl = info?['fileUrl'] as String?;
-      if (uploadUrl != null && fileUrl != null) {
+      if (fileUrl != null) {
         callbackBody['introVideoUrl'] = fileUrl;
-        uploads.add(_PendingUpload(
-          file: video,
-          uploadUrl: uploadUrl,
-          contentType: _inferVideoContentType(video.name),
-        ));
+        if (info?['isMultipart'] as bool? ?? false) {
+          multipartUploads.add(_PendingMultipartUpload(
+            file: video,
+            assetInfo: info!,
+          ));
+        } else if (uploadUrl != null) {
+          uploads.add(_PendingUpload(
+            file: video,
+            uploadUrl: uploadUrl,
+            contentType: _inferVideoContentType(video.name),
+          ));
+        }
       }
     }
 
-    if (uploads.isEmpty) {
+    if (uploads.isEmpty && multipartUploads.isEmpty) {
       ToastService.showError('Failed to get upload URLs');
       return false;
     }
@@ -240,6 +260,7 @@ class CourseUploadProvider extends ChangeNotifier {
     // Fire off background upload + PUT /course — sheet pops immediately
     unawaited(_completeUploadEdit(
       uploads: uploads,
+      multipartUploads: multipartUploads,
       callbackBody: Map<String, dynamic>.from(callbackBody),
       courseId: courseId,
       onCourseUpdated: onCourseUpdated,
@@ -249,6 +270,7 @@ class CourseUploadProvider extends ChangeNotifier {
 
   Future<void> _completeUploadEdit({
     required List<_PendingUpload> uploads,
+    required List<_PendingMultipartUpload> multipartUploads,
     required Map<String, dynamic> callbackBody,
     required int courseId,
     VoidCallback? onCourseUpdated,
@@ -296,6 +318,15 @@ class CourseUploadProvider extends ChangeNotifier {
           }
         } finally {
           client.close();
+        }
+      }
+
+      for (final mu in multipartUploads) {
+        final fileUrl = await _uploadMultipartAsset(
+          mu.assetInfo, mu.file, notifId, 'Uploading ${mu.file.name}',
+        );
+        if (fileUrl == null) {
+          throw Exception('Multipart upload failed for ${mu.file.name}');
         }
       }
 
@@ -387,14 +418,17 @@ class CourseUploadProvider extends ChangeNotifier {
 
       final thumbName = _thumbnailFile!.name;
       final thumbContentType = _inferImageContentType(thumbName);
+      final thumbFileSize = await _thumbnailFile!.length();
 
       final body = <String, dynamic>{
         'thumbnailFilename': thumbName,
         'thumbnailContentType': thumbContentType,
+        'thumbnailFileSize': thumbFileSize,
       };
       if (_videoFile != null) {
         body['videoFilename'] = _videoFile!.name;
         body['videoContentType'] = _inferVideoContentType(_videoFile!.name);
+        body['videoFileSize'] = await _videoFile!.length();
       }
 
       final urlsResponse = await getNetworkCaller().postRequest(
@@ -422,19 +456,17 @@ class CourseUploadProvider extends ChangeNotifier {
       }
 
       final thumbInfo = innerData['thumbnail'] as Map<String, dynamic>?;
-      if (thumbInfo == null || thumbInfo['uploadUrl'] == null || thumbInfo['fileUrl'] == null) {
+      if (thumbInfo == null || thumbInfo['fileUrl'] == null) {
         _step = UploadStep.error;
         ToastService.showError('Missing thumbnail upload info');
         notifyListeners();
         return false;
       }
-
-      final thumbUploadUrl = thumbInfo['uploadUrl'] as String;
       final thumbFileUrl = thumbInfo['fileUrl'] as String;
 
       await NativeUploadBridge.startNativeUpload(
         filePath: _thumbnailFile!.path,
-        uploadUrl: thumbUploadUrl,
+        uploadUrl: thumbInfo['uploadUrl'] as String? ?? '',
         title: 'Course Thumbnail: $title',
         contentType: thumbContentType,
         uploadType: 'course',
@@ -445,7 +477,19 @@ class CourseUploadProvider extends ChangeNotifier {
       notifyListeners();
       ToastService.showInfo('Uploading thumbnail...');
 
-      await _uploadToS3(thumbUploadUrl, _thumbnailFile!, thumbContentType, notifId, 'Uploading Course Thumbnail');
+      final thumbIsMultipart = thumbInfo['isMultipart'] as bool? ?? false;
+      if (thumbIsMultipart) {
+        await _uploadMultipartAsset(thumbInfo, _thumbnailFile!, notifId, 'Uploading Course Thumbnail');
+      } else {
+        final thumbUploadUrl = thumbInfo['uploadUrl'] as String?;
+        if (thumbUploadUrl == null) {
+          _step = UploadStep.error;
+          ToastService.showError('Missing thumbnail upload URL');
+          notifyListeners();
+          return false;
+        }
+        await _uploadToS3(thumbUploadUrl, _thumbnailFile!, thumbContentType, notifId, 'Uploading Course Thumbnail');
+      }
 
       _step = UploadStep.uploadingThumbnail;
       _uploadProgress = 1.0;
@@ -455,34 +499,45 @@ class CourseUploadProvider extends ChangeNotifier {
       String? videoFileUrl;
       final videoInfo = innerData['video'] as Map<String, dynamic>?;
       if (videoInfo != null) {
-        final videoUploadUrl = videoInfo['uploadUrl'] as String;
-        videoFileUrl = videoInfo['fileUrl'] as String;
+        videoFileUrl = videoInfo['fileUrl'] as String?;
 
-        await NativeUploadBridge.startNativeUpload(
-          filePath: _videoFile!.path,
-          uploadUrl: videoUploadUrl,
-          title: 'Course Video: $title',
-          contentType: _inferVideoContentType(_videoFile!.name),
-          uploadType: 'course',
-        );
+        if (videoInfo['isMultipart'] as bool? ?? false) {
+          videoFileUrl = await _uploadMultipartAsset(videoInfo, _videoFile!, notifId, 'Uploading Course Intro Video');
+        } else {
+          final videoUploadUrl = videoInfo['uploadUrl'] as String?;
+          if (videoUploadUrl == null) {
+            _step = UploadStep.error;
+            ToastService.showError('Missing video upload URL');
+            notifyListeners();
+            return false;
+          }
 
-        _step = UploadStep.uploadingVideo;
-        _uploadProgress = 0.0;
-        notifyListeners();
-        ToastService.showInfo('Uploading intro video...');
+          await NativeUploadBridge.startNativeUpload(
+            filePath: _videoFile!.path,
+            uploadUrl: videoUploadUrl,
+            title: 'Course Video: $title',
+            contentType: _inferVideoContentType(_videoFile!.name),
+            uploadType: 'course',
+          );
 
-        await _uploadToS3(
-          videoUploadUrl,
-          _videoFile!,
-          _inferVideoContentType(_videoFile!.name),
-          notifId,
-          'Uploading Course Intro Video',
-        );
+          _step = UploadStep.uploadingVideo;
+          _uploadProgress = 0.0;
+          notifyListeners();
+          ToastService.showInfo('Uploading intro video...');
 
-        _step = UploadStep.uploadingVideo;
-        _uploadProgress = 1.0;
-        notifyListeners();
-        ToastService.showSuccess('Intro video uploaded');
+          await _uploadToS3(
+            videoUploadUrl,
+            _videoFile!,
+            _inferVideoContentType(_videoFile!.name),
+            notifId,
+            'Uploading Course Intro Video',
+          );
+
+          _step = UploadStep.uploadingVideo;
+          _uploadProgress = 1.0;
+          notifyListeners();
+          ToastService.showSuccess('Intro video uploaded');
+        }
       }
 
       _step = UploadStep.creatingCourse;
@@ -497,6 +552,7 @@ class CourseUploadProvider extends ChangeNotifier {
           'shortDescription': shortDescription.trim(),
           'requirements': requirements.trim(),
           'thumbnailUrl': thumbFileUrl,
+          // ignore: use_null_aware_elements
           if (videoFileUrl != null) 'introVideoUrl': videoFileUrl,
           'language': language,
           'level': level.toUpperCase(),
@@ -539,6 +595,95 @@ class CourseUploadProvider extends ChangeNotifier {
       ToastService.showError('Upload failed. The course will resume from queue.');
       notifyListeners();
       return false;
+    }
+  }
+
+  Future<String?> _uploadMultipartAsset(
+    Map<String, dynamic> assetInfo,
+    XFile file,
+    int notifId,
+    String notifTitle,
+  ) async {
+    final uploadId = assetInfo['uploadId'] as String?;
+    final partsRaw = assetInfo['parts'] as List?;
+    final totalParts = assetInfo['totalParts'] as int? ?? 0;
+    final fileUrl = assetInfo['fileUrl'] as String?;
+
+    if (uploadId == null || partsRaw == null || partsRaw.isEmpty) {
+      ToastService.showError('Invalid multipart response');
+      return null;
+    }
+
+    final fileSize = await file.length();
+    final partSize = totalParts > 0
+        ? (fileSize + totalParts - 1) ~/ totalParts
+        : 5 * 1024 * 1024;
+
+    final client = http.Client();
+    final etags = <Map<String, dynamic>>[];
+    final parts = partsRaw.cast<Map<String, dynamic>>()
+      ..sort((a, b) => (a['partNumber'] as num).compareTo(b['partNumber'] as num));
+
+    try {
+      int completed = 0;
+      for (final part in parts) {
+        final partNumber = (part['partNumber'] as num).toInt();
+        final uploadUrl = part['uploadUrl'] as String?;
+        if (uploadUrl == null) continue;
+
+        final startByte = (partNumber - 1) * partSize;
+        final endByte = min(startByte + partSize, fileSize);
+
+        final request = http.StreamedRequest('PUT', Uri.parse(uploadUrl));
+        request.contentLength = endByte - startByte;
+        final stream = file.openRead(startByte, endByte);
+        await stream.forEach(request.sink.add);
+        request.sink.close();
+
+        final response =
+            await client.send(request).timeout(const Duration(hours: 1));
+
+        if (response.statusCode == 200) {
+          final eTag = response.headers['etag'] ?? response.headers['Etag'];
+          if (eTag != null) {
+            // Preserve S3's canonical quoted ETag verbatim — the backend's
+            // complete endpoint expects the raw header value.
+            etags.add({
+              'partNumber': partNumber,
+              'eTag': eTag,
+            });
+          }
+        }
+
+        completed++;
+        _uploadProgress = completed / parts.length;
+        notifyListeners();
+        UploadNotificationService.showProgress(
+          notificationId: notifId,
+          progress: completed,
+          total: parts.length,
+          title: notifTitle,
+        );
+      }
+
+      if (etags.length != parts.length) {
+        ToastService.showError('Upload incomplete: ${etags.length}/${parts.length} parts');
+        return null;
+      }
+
+      final completeResponse = await getNetworkCaller().postRequest(
+        url: Urls.courseAssetsUploadUrl,
+        body: {'uploadId': uploadId, 'parts': etags},
+      );
+
+      if (!completeResponse.isSuccess) return null;
+
+      final cr = completeResponse.responseData;
+      final cw = cr is Map ? cr['data'] : null;
+      final cd = cw is Map ? (cw['data'] ?? cw) : cw;
+      return cd is Map ? (cd['fileUrl'] as String? ?? fileUrl) : fileUrl;
+    } finally {
+      client.close();
     }
   }
 
@@ -622,5 +767,15 @@ class _PendingUpload {
     required this.file,
     required this.uploadUrl,
     required this.contentType,
+  });
+}
+
+class _PendingMultipartUpload {
+  final XFile file;
+  final Map<String, dynamic> assetInfo;
+
+  const _PendingMultipartUpload({
+    required this.file,
+    required this.assetInfo,
   });
 }

@@ -210,8 +210,8 @@ class _PendingLessonRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     final queueProvider = context.watch<UnifiedUploadQueueProvider>();
-    final isActiveUpload = queueProvider.activeItem?.id == pending.queueId;
-    final nativeProgress = queueProvider.activeProgress / 100.0;
+    final isActiveUpload = queueProvider.activeUploadId == pending.queueId;
+    final nativeProgress = queueProvider.activeUploadProgress;
     final dbProgress = pending.uploadProgress;
     final progress = isActiveUpload
         ? nativeProgress >= dbProgress ? nativeProgress : dbProgress

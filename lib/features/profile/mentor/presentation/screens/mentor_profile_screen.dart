@@ -3,7 +3,7 @@ import 'package:edtech/features/profile/avatar/presentation/widgets/cover_reposi
 import 'package:edtech/features/profile/mentor/presentation/widgets/mentor_hero_banner.dart';
 import 'package:edtech/features/profile/mentor/presentation/widgets/mentor_identity_header.dart';
 import 'package:edtech/features/profile/mentor/presentation/widgets/mentor_metrics_bar.dart';
-import 'package:edtech/app/app_routes.dart';
+import 'package:edtech/app/app_routes.dart' show AppRoutes, routeObserver;
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:flutter/material.dart';
@@ -33,7 +33,8 @@ class MentorProfileScreen extends StatefulWidget {
   State<MentorProfileScreen> createState() => _MentorProfileScreenState();
 }
 
-class _MentorProfileScreenState extends State<MentorProfileScreen> {
+class _MentorProfileScreenState extends State<MentorProfileScreen>
+    with RouteAware {
   @override
   void initState() {
     super.initState();
@@ -60,8 +61,19 @@ class _MentorProfileScreenState extends State<MentorProfileScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
+  void didPushNext() {
+    context.read<VideoPlayerProvider>().pause();
+  }
+
+  @override
   void dispose() {
-    context.read<VideoPlayerProvider>().dismiss();
+    routeObserver.unsubscribe(this);
     super.dispose();
   }
 

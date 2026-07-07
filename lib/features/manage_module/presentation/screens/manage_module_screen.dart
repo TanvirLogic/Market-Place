@@ -16,6 +16,7 @@ import 'package:edtech/features/manage_module/presentation/widgets/manage_module
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_edit_lesson_sheet.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_shimmer.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
+import 'package:edtech/app/app_routes.dart' show routeObserver;
 import 'package:edtech/global/core/providers/video_player_provider.dart';
 import 'package:edtech/features/profile/student/presentation/widgets/video_player_screen.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
@@ -29,7 +30,10 @@ class ManageModuleScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ManageModuleProvider(courseId: courseId),
+      create: (ctx) => ManageModuleProvider(
+        courseId: courseId,
+        queueProvider: ctx.read<UnifiedUploadQueueProvider>(),
+      ),
       child: const _ManageModuleBody(),
     );
   }
@@ -42,7 +46,7 @@ class _ManageModuleBody extends StatefulWidget {
   State<_ManageModuleBody> createState() => _ManageModuleBodyState();
 }
 
-class _ManageModuleBodyState extends State<_ManageModuleBody> {
+class _ManageModuleBodyState extends State<_ManageModuleBody> with RouteAware {
   final ValueNotifier<int> _resetNotifier = ValueNotifier(0);
   final Map<int, ValueNotifier<bool>> _revealNotifiers = {};
 
@@ -51,7 +55,19 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
+  void didPushNext() {
+    context.read<VideoPlayerProvider>().pause();
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     context.read<VideoPlayerProvider>().dismiss();
     super.dispose();
   }
@@ -210,11 +226,7 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                   pendingLessonsForModule:
                                       provider.pendingLessonsForModule,
                                   onDeletePendingLesson: (queueId) =>
-                                      provider.deletePendingLesson(
-                                        queueId,
-                                        queueProvider: context
-                                            .read<UnifiedUploadQueueProvider>(),
-                                      ),
+                                      provider.deletePendingLesson(queueId),
                                   onAddVideo: (index) =>
                                       ManageModuleAddLessonSheet.show(
                                         context,
@@ -226,10 +238,6 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                               index,
                                               title,
                                               file,
-                                              queueProvider: context
-                                                  .read<
-                                                    UnifiedUploadQueueProvider
-                                                  >(),
                                             ),
                                       ),
                                   onAddResource: (index) =>
@@ -243,10 +251,6 @@ class _ManageModuleBodyState extends State<_ManageModuleBody> {
                                               index,
                                               title,
                                               file,
-                                              queueProvider: context
-                                                  .read<
-                                                    UnifiedUploadQueueProvider
-                                                  >(),
                                             ),
                                       ),
                                   onReorderLesson: provider.reorderLesson,

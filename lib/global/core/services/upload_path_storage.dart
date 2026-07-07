@@ -151,7 +151,7 @@ class UploadPathStorage {
     try {
       final paths = await getAllPendingPaths();
       final items = paths.map((p) => {
-        'id': p.filePath.hashCode & 0x7FFFFFFFFFFFFFFF,
+        'id': p.filePath.hashCode & 0x7FFFFFFF,
         'filePath': p.filePath,
         'title': p.title,
         'uploadUrl': null,

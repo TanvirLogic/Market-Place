@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/app/app_colors.dart';
-import 'package:edtech/app/app_routes.dart';
+import 'package:edtech/app/app_routes.dart' show AppRoutes, routeObserver;
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/global/core/widgets/shimmer_widget.dart';
@@ -45,7 +45,8 @@ class _CourseDetailsBody extends StatefulWidget {
   State<_CourseDetailsBody> createState() => _CourseDetailsBodyState();
 }
 
-class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
+class _CourseDetailsBodyState extends State<_CourseDetailsBody>
+    with RouteAware {
   Timer? _introControlTimer;
   bool _showIntroControls = true;
 
@@ -59,7 +60,19 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
+  void didPushNext() {
+    context.read<VideoPlayerProvider>().pause();
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _introControlTimer?.cancel();
     context.read<VideoPlayerProvider>().dismiss();
     super.dispose();
@@ -89,10 +102,15 @@ class _CourseDetailsBodyState extends State<_CourseDetailsBody> {
   }
 
   void _openFullScreen(BuildContext context, String url, String title) {
+    final vp = context.read<VideoPlayerProvider>();
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(videoUrl: url, title: title),
+        builder: (_) => VideoPlayerScreen(
+          videoUrl: url,
+          title: title,
+          initialPosition: vp.position,
+        ),
       ),
     );
   }

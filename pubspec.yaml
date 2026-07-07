@@ -35,7 +35,9 @@ dependencies:
   video_thumbnail: ^0.5.3
   webview_flutter: ^4.14.0
   flutter_tawk_to_plus: ^1.1.1
-  background_downloader: ^9.5.4
+  upload_queue:
+    path: packages/upload_queue
+
 
 dev_dependencies:
   flutter_test:
@@ -56,6 +58,4 @@ flutter:
     - assets/images/social_icons/
     - assets/images/revenue_icons/
 
-dependency_overrides:
-  background_downloader:
-    path: packages/background_downloader
+

@@ -6,12 +6,25 @@ import 'package:edtech/features/courses/data/models/upload_task.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+// ignore_for_file: depend_on_referenced_packages
 
 String _generateUploadId() {
   final now = DateTime.now().millisecondsSinceEpoch;
   final rand = Random().nextInt(0x7FFFFFFF);
   return 'up_${now}_$rand';
 }
+
+List<PartETag> _parsePartETags(String? jsonStr) {
+  if (jsonStr == null || jsonStr.isEmpty) return [];
+  try {
+    final list = jsonDecode(jsonStr) as List;
+    return list.map((e) => PartETag.fromJson(e as Map<String, dynamic>)).toList();
+  } catch (_) {
+    return [];
+  }
+}
+
+String _encodePartETags(List<PartETag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
 
 class UploadQueueItem {
   final int? id;
@@ -35,6 +48,12 @@ class UploadQueueItem {
   final String? idempotencyKey;
   final int nativeMarkedCompleted;
   final int serverCallbackCompleted;
+  // Multipart upload fields
+  final String? s3UploadId;
+  final int totalParts;
+  final int partsCompleted;
+  final int partSize;
+  final String? partETags;
 
   UploadQueueItem({
     this.id,
@@ -58,6 +77,11 @@ class UploadQueueItem {
     this.idempotencyKey,
     this.nativeMarkedCompleted = 0,
     this.serverCallbackCompleted = 0,
+    this.s3UploadId,
+    this.totalParts = 0,
+    this.partsCompleted = 0,
+    this.partSize = 0,
+    this.partETags,
   }) : createdAt = createdAt ?? DateTime.now().toIso8601String(),
        lastUpdated = lastUpdated ?? DateTime.now().toIso8601String();
 
@@ -65,6 +89,11 @@ class UploadQueueItem {
 
   bool get isNativeCompleted => nativeMarkedCompleted == 1;
   bool get isCallbackCompleted => serverCallbackCompleted == 1;
+
+  double get multipartProgress =>
+      totalParts > 0 ? partsCompleted / totalParts : 0.0;
+
+  List<PartETag> get parsedPartETags => _parsePartETags(partETags);
 
   T? parseMetadata<T>(T Function(Map<String, dynamic>) fromJson) {
     if (metadata == null || metadata!.isEmpty) return null;
@@ -98,6 +127,11 @@ class UploadQueueItem {
     String? idempotencyKey,
     int? nativeMarkedCompleted,
     int? serverCallbackCompleted,
+    String? s3UploadId,
+    int? totalParts,
+    int? partsCompleted,
+    int? partSize,
+    String? partETags,
   }) {
     return UploadQueueItem(
       id: id ?? this.id,
@@ -123,6 +157,11 @@ class UploadQueueItem {
           nativeMarkedCompleted ?? this.nativeMarkedCompleted,
       serverCallbackCompleted:
           serverCallbackCompleted ?? this.serverCallbackCompleted,
+      s3UploadId: s3UploadId ?? this.s3UploadId,
+      totalParts: totalParts ?? this.totalParts,
+      partsCompleted: partsCompleted ?? this.partsCompleted,
+      partSize: partSize ?? this.partSize,
+      partETags: partETags ?? this.partETags,
     );
   }
 
@@ -149,6 +188,11 @@ class UploadQueueItem {
       'idempotencyKey': idempotencyKey,
       'nativeMarkedCompleted': nativeMarkedCompleted,
       'serverCallbackCompleted': serverCallbackCompleted,
+      's3UploadId': s3UploadId,
+      'totalParts': totalParts,
+      'partsCompleted': partsCompleted,
+      'partSize': partSize,
+      'partETags': partETags,
     };
   }
 
@@ -175,6 +219,11 @@ class UploadQueueItem {
       idempotencyKey: map['idempotencyKey'] as String?,
       nativeMarkedCompleted: map['nativeMarkedCompleted'] as int? ?? 0,
       serverCallbackCompleted: map['serverCallbackCompleted'] as int? ?? 0,
+      s3UploadId: map['s3UploadId'] as String?,
+      totalParts: map['totalParts'] as int? ?? 0,
+      partsCompleted: map['partsCompleted'] as int? ?? 0,
+      partSize: map['partSize'] as int? ?? 0,
+      partETags: map['partETags'] as String?,
     );
   }
 }
@@ -190,6 +239,95 @@ class UploadQueueRepository {
 
   /// Trim the WAL file to prevent unbounded growth from frequent writes.
   /// Call periodically (e.g. every 5 minutes during upload activity).
+  /// Persist multipart init result (s3UploadId, totalParts, partSize).
+  /// Clears any stale partETags when re-initializing.
+  static Future<void> updateMultipartInit({
+    required int id,
+    required String s3UploadId,
+    required int totalParts,
+    required int partSize,
+  }) async {
+    final db = await database;
+    await db.update(
+      'upload_queue',
+      {
+        's3UploadId': s3UploadId,
+        'totalParts': totalParts,
+        'partsCompleted': 0,
+        'partSize': partSize,
+        'partETags': '[]',
+        'lastUpdated': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Increment partsCompleted by 1 and append an ETag.
+  static Future<void> recordPartCompletion({
+    required int id,
+    required int partNumber,
+    required String eTag,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'upload_queue',
+        columns: ['partETags', 'partsCompleted'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final existing = rows.first['partETags'] as String?;
+      final tags = _parsePartETags(existing);
+      tags.removeWhere((t) => t.partNumber == partNumber);
+      tags.add(PartETag(partNumber: partNumber, eTag: eTag));
+      await txn.update(
+        'upload_queue',
+        {
+          'partsCompleted': (rows.first['partsCompleted'] as int? ?? 0) + 1,
+          'partETags': _encodePartETags(tags),
+          'lastUpdated': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  /// Get the current list of completed part ETags for an item.
+  static Future<List<PartETag>> getPartETags(int id) async {
+    final db = await database;
+    final rows = await db.query(
+      'upload_queue',
+      columns: ['partETags'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return [];
+    return _parsePartETags(rows.first['partETags'] as String?);
+  }
+
+  /// Clear multipart state to allow re-init (used on retry).
+  static Future<void> clearMultipartState(int id) async {
+    final db = await database;
+    await db.update(
+      'upload_queue',
+      {
+        's3UploadId': null,
+        'totalParts': 0,
+        'partsCompleted': 0,
+        'partSize': 0,
+        'partETags': null,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   static Future<void> checkpointWal() async {
     try {
       final db = await database;
@@ -203,7 +341,7 @@ class UploadQueueRepository {
     AppLogger.i('UploadQueueRepository: opening database at $path');
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE upload_queue (
@@ -295,6 +433,27 @@ class UploadQueueRepository {
           );
           AppLogger.i(
             'UploadQueueRepository: migrated to v5 — added uploadId, workerId, heartbeatMs, retryCount, idempotencyKey, nativeMarkedCompleted, serverCallbackCompleted',
+          );
+        }
+        // v6: Added multipart upload columns (s3UploadId, totalParts, partsCompleted, partSize, partETags)
+        if (oldVersion < 6) {
+          await db.execute(
+            "ALTER TABLE upload_queue ADD COLUMN s3UploadId TEXT",
+          );
+          await db.execute(
+            "ALTER TABLE upload_queue ADD COLUMN totalParts INTEGER NOT NULL DEFAULT 0",
+          );
+          await db.execute(
+            "ALTER TABLE upload_queue ADD COLUMN partsCompleted INTEGER NOT NULL DEFAULT 0",
+          );
+          await db.execute(
+            "ALTER TABLE upload_queue ADD COLUMN partSize INTEGER NOT NULL DEFAULT 0",
+          );
+          await db.execute(
+            "ALTER TABLE upload_queue ADD COLUMN partETags TEXT",
+          );
+          AppLogger.i(
+            'UploadQueueRepository: migrated to v6 — added multipart columns (s3UploadId, totalParts, partsCompleted, partSize, partETags)',
           );
         }
       },
@@ -454,9 +613,8 @@ class UploadQueueRepository {
     return await db.transaction<UploadQueueItem?>((txn) async {
       final maps = await txn.query(
         'upload_queue',
-        where:
-            'status = ? AND uploadUrl IS NOT NULL AND uploadUrl != ? AND (workerId IS NULL OR workerId = ?)',
-        whereArgs: ['pending', '', ''],
+        where: 'status = ? AND (workerId IS NULL OR workerId = ?)',
+        whereArgs: ['pending', ''],
         orderBy: 'id ASC',
         limit: 1,
       );

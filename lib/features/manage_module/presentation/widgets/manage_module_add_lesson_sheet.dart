@@ -69,22 +69,29 @@ class _ManageModuleAddLessonSheetState
 
   Future<void> _pickFile() async {
     setState(() => _isPicking = true);
-    XFile? file;
-    if (widget.lessonType == LessonType.video) {
-      file = await _imagePicker.pickVideo(source: ImageSource.gallery);
-    } else {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: [
-          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-        ],
-      );
-      if (result != null && result.files.single.path != null) {
-        file = XFile(result.files.single.path!);
+    try {
+      XFile? file;
+      if (widget.lessonType == LessonType.video) {
+        file = await _imagePicker.pickVideo(source: ImageSource.gallery);
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: [
+            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+          ],
+        );
+        if (result != null && result.files.single.path != null) {
+          file = XFile(result.files.single.path!);
+        }
       }
+      if (!mounted) return;
+      if (file != null) setState(() => _selectedFile = file);
+    } catch (_) {
+      if (!mounted) return;
+      ToastService.showError('Failed to open file picker');
+    } finally {
+      if (mounted) setState(() => _isPicking = false);
     }
-    if (mounted) setState(() => _isPicking = false);
-    if (file != null) setState(() => _selectedFile = file);
   }
 
   Future<void> _handleUpload() async {
@@ -98,16 +105,22 @@ class _ManageModuleAddLessonSheetState
     if (!mounted) return;
     setState(() => _isUploading = true);
 
-    final success = await widget.onAddLesson(
-      title,
-      _selectedFile!,
-    );
+    try {
+      final success = await widget.onAddLesson(
+        title,
+        _selectedFile!,
+      );
 
-    if (!mounted) return;
-    setState(() => _isUploading = false);
+      if (!mounted) return;
 
-    if (success) {
-      Navigator.of(context).pop();
+      if (success) {
+        Navigator.of(context).pop();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ToastService.showError('Upload failed');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 

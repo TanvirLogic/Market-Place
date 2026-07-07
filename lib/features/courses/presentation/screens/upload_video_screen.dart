@@ -57,29 +57,51 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   }
 
   Future<void> _handleUpload() async {
-    if (!_formKey.currentState!.validate()) return;
+    debugPrint('[UploadVideo] _handleUpload started');
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('[UploadVideo] form invalid');
+      return;
+    }
     if (_pickedFile == null) {
+      debugPrint('[UploadVideo] no file selected');
       ToastService.showError('Please select a video file');
       return;
     }
 
     final file = File(_pickedFile!.path);
     if (!await file.exists()) {
+      debugPrint('[UploadVideo] file not found: ${_pickedFile!.path}');
       ToastService.showError('Selected file no longer available');
       return;
     }
 
     if (!mounted) return;
     setState(() => _isUploading = true);
+    debugPrint(
+      '[UploadVideo] calling addToQueue title="${_titleController.text.trim()}" path=${file.path}',
+    );
 
-    final provider = context.read<UnifiedUploadQueueProvider>();
-    final success = await provider.addToQueue(file, _titleController.text.trim());
+    try {
+      final provider = context.read<UnifiedUploadQueueProvider>();
+      final success = await provider.addToQueue(
+        file,
+        _titleController.text.trim(),
+      );
+      debugPrint('[UploadVideo] addToQueue returned success=$success');
 
-    if (!mounted) return;
-    setState(() => _isUploading = false);
+      if (!mounted) return;
 
-    if (success) {
-      Navigator.of(context).pop();
+      if (success) {
+        debugPrint('[UploadVideo] popping screen');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      debugPrint('[UploadVideo] addToQueue threw: $e');
+      if (!mounted) return;
+      ToastService.showError('Upload failed');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+      debugPrint('[UploadVideo] _handleUpload finished');
     }
   }
 
@@ -97,7 +119,10 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
           padding: EdgeInsets.only(left: 16),
           child: AppBackButton(),
         ),
-        title: Text('Upload Video', style: TextStyle(fontSize: 20, color: cs.onSurface)),
+        title: Text(
+          'Upload Video',
+          style: TextStyle(fontSize: 20, color: cs.onSurface),
+        ),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -105,7 +130,10 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: AppSizes.horizontalPadding, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSizes.horizontalPadding,
+                  vertical: 16,
+                ),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -122,10 +150,21 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Title', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                          Text(
+                            'Title',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: cs.onSurface,
+                            ),
+                          ),
                           Text(
                             '$_characterCount/60',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.6)),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: cs.onSurface.withValues(alpha: 0.6),
+                            ),
                           ),
                         ],
                       ),
@@ -133,38 +172,62 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                       TextFormField(
                         controller: _titleController,
                         textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+                        onFieldSubmitted: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
                         maxLines: 4,
                         maxLength: 60,
-                        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                        buildCounter:
+                            (
+                              _, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) => null,
                         style: TextStyle(color: cs.onSurface),
                         validator: (value) {
-                          if (value == null || value.trim().isEmpty) return 'Title is required';
+                          if (value == null || value.trim().isEmpty)
+                            return 'Title is required';
                           return null;
                         },
                         decoration: InputDecoration(
                           hintText: 'Enter your video title',
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           filled: true,
-                          fillColor: isDark ? cs.surfaceContainerHighest : Colors.white,
+                          fillColor: isDark
+                              ? cs.surfaceContainerHighest
+                              : Colors.white,
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide: BorderSide(
-                              color: isDark ? cs.outlineVariant : AppColors.border,
+                              color: isDark
+                                  ? cs.outlineVariant
+                                  : AppColors.border,
                               width: 1,
                             ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: AppColors.themeColor, width: 1.5),
+                            borderSide: BorderSide(
+                              color: AppColors.themeColor,
+                              width: 1.5,
+                            ),
                           ),
                           errorBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFEF4444),
+                              width: 1.5,
+                            ),
                           ),
                           focusedErrorBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFEF4444),
+                              width: 1.5,
+                            ),
                           ),
                         ),
                       ),
@@ -176,7 +239,9 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
               child: AuthButton(
-                text: _pickedFile == null ? 'Select a video first' : 'Upload Video',
+                text: _pickedFile == null
+                    ? 'Select a video first'
+                    : 'Upload Video',
                 borderRadius: 28,
                 isLoading: _isUploading,
                 onPressed: (_isPicking || _isUploading) ? null : _handleUpload,

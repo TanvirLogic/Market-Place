@@ -41,6 +41,10 @@
             android:foregroundServiceType="dataSync"
             android:exported="false"
             tools:replace="android:foregroundServiceType" />
+        <service
+            android:name="net.eduverseapp.platform.upload.UploadForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
     </application>
     <queries>
         <intent>

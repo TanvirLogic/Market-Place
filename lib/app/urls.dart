@@ -65,6 +65,13 @@ class Urls {
   static const String videoPostUrl = '$_baseUrl/video-post';
 
   // ──────────────────────────────────────────────
+  // Shared Multipart Complete / Abort Endpoints
+  // Used for ALL asset types (video-post, course, module lesson, resource).
+  // ──────────────────────────────────────────────
+  static const String uploadCompleteUrl = '$_baseUrl/video-post/upload/complete';
+  static const String uploadAbortUrl = '$_baseUrl/video-post/upload/abort';
+
+  // ──────────────────────────────────────────────
   // Dashboard Endpoints
   // ──────────────────────────────────────────────
   static const String dashboardMetricsUrl = '$_baseUrl/dashboard/metrics';

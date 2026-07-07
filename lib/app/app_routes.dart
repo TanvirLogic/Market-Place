@@ -26,6 +26,8 @@ import 'package:edtech/features/profile/mentor/presentation/screens/mentor_profi
 import 'package:edtech/features/profile/student/presentation/screens/student_profile_screen.dart';
 import 'package:flutter/material.dart';
 
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+
 class AppRoutes {
   static const String splash = '/';
   static const String login = '/login';

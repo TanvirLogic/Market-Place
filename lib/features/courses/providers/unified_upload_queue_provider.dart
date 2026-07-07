@@ -1,1037 +1,465 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
-import 'package:background_downloader/background_downloader.dart';
 import 'package:edtech/app/app.dart';
 import 'package:edtech/app/urls.dart';
 import 'package:edtech/features/auth/data/models/auth_controller.dart';
 import 'package:edtech/features/courses/data/helpers/video_metadata_helper.dart';
 import 'package:edtech/features/courses/data/models/upload_task.dart';
-import 'package:edtech/features/courses/data/repositories/upload_queue_repository.dart';
-import 'package:edtech/features/courses/services/background_upload_service.dart';
-import 'package:edtech/features/courses/services/background_uploader_service.dart';
+import 'package:edtech/features/courses/services/native_background_engine.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/services/upload_notification_service.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:upload_queue/upload_queue.dart';
 
 class UnifiedUploadQueueProvider extends ChangeNotifier {
-  List<UploadQueueItem> _queue = [];
-  UploadQueueItem? _activeItem;
-  int _activeProgress = 0;
-  bool _isUploading = false;
-  DateTime? _isUploadingSince;
-  int _progressUpdateCount = 0;
-  Timer? _queuePumpTimer;
-  // Guards against concurrent _handleNativeComplete for the same item,
-  // which would send the server callback twice (creating duplicate lessons).
-  final Set<int> _handlingNativeComplete = {};
+  late final UploadQueue _queue;
+  NativeBackgroundEngine? _nativeEngine;
+  StreamSubscription? _updateSub;
+  bool _adding = false;
 
-  List<UploadQueueItem> get queue => List.unmodifiable(_queue);
-  UploadQueueItem? get activeItem => _activeItem;
-  int get activeProgress => _activeProgress;
-  bool get isBackgroundRunning => false;
-  bool get isPaused => false;
+  List<UploadTask> get tasks => _queue.tasks;
+  int? get activeUploadId {
+    final uploading = _queue.tasks
+        .where((t) => t.state == UploadState.uploading)
+        .firstOrNull;
+    return uploading?.id;
+  }
+
+  double get activeUploadProgress {
+    final uploading = _queue.tasks
+        .where((t) => t.state == UploadState.uploading)
+        .firstOrNull;
+    return uploading?.progress ?? 0.0;
+  }
 
   int get pendingCount =>
-      _queue.where((item) => item.status == 'pending').length;
+      _queue.tasks.where((t) => t.state == UploadState.pending).length;
 
   int get completedCount =>
-      _queue.where((item) => item.status == 'completed').length;
+      _queue.tasks.where((t) => t.state == UploadState.completed).length;
 
-  int get failedCount => _queue.where((item) => item.status == 'failed').length;
+  int get failedCount =>
+      _queue.tasks.where((t) => t.state == UploadState.failed).length;
 
-  double get totalProgress {
-    if (_activeItem == null) return 0.0;
-    return _activeProgress / 100.0;
-  }
+  UploadQueue get queue => _queue;
+
+  /// The native engine, if running on a mobile platform. Exposed so callers
+  /// can query background upload status after process death.
+  NativeBackgroundEngine? get nativeEngine => _nativeEngine;
+
+  /// Tracks which asset section to extract from the combined course response.
+  /// Set by [_buildInitBody] before the init request, read by [_parseInitResponse].
+  String? _pendingCourseAssetKey;
 
   UnifiedUploadQueueProvider() {
     _init();
   }
 
-  @override
-  void dispose() {
-    _queuePumpTimer?.cancel();
-    super.dispose();
+  /// Absolute paths of app-owned temp/cache directories. A source file is only
+  /// deleted after upload if it lives under one of these (e.g. an image_picker
+  /// copy), never an original user file elsewhere.
+  final List<String> _deletableRoots = [];
+
+  Future<void> _resolveDeletableRoots() async {
+    try {
+      final tmp = await getTemporaryDirectory();
+      _deletableRoots.add(tmp.path);
+      final support = await getApplicationSupportDirectory();
+      _deletableRoots.add(support.path);
+    } catch (_) {}
+  }
+
+  bool _shouldDeleteSourceOnComplete(UploadTask task) {
+    if (_deletableRoots.isEmpty) return false;
+    final path = File(task.filePath).absolute.path;
+    return _deletableRoots.any((root) => path.startsWith(root));
   }
 
   Future<void> _init() async {
-    // Register global callbacks so progress/status updates are received
-    // even if the app was killed and restarted while uploads were running.
-    FileDownloader().registerCallbacks(
-      taskStatusCallback: (update) {
-        unawaited(_onNativeTaskStatus(update));
-      },
-      taskProgressCallback: (update) {
-        unawaited(_onNativeTaskProgress(update));
-      },
+    await _resolveDeletableRoots();
+    final config = UploadConfig(
+      initUploadEndpoint: Urls.courseModuleUploadUrl,
+      tokenProvider: () => AuthController.accessToken ?? '',
+      refreshTokenProvider: () => AuthController.userModel?.refreshToken ?? '',
+      refreshEndpoint: Urls.refreshTokenUrl,
+      buildInitEndpoint: (metadata) =>
+          metadata?['initEndpoint'] as String? ?? Urls.courseModuleUploadUrl,
+      buildInitBody: _buildInitBody,
+      parseInitResponse: _parseInitResponse,
+      parseCompleteResponse: _parseCompleteResponse,
+      buildCompleteExtraFields: _buildCompleteExtraFields,
+      buildCompleteEndpoint: (_) => Urls.uploadCompleteUrl,
+      buildAbortEndpoint: (_) => Urls.uploadAbortUrl,
+      buildCallback: _buildCallback,
+      shouldDeleteSourceOnComplete: _shouldDeleteSourceOnComplete,
+      logger: (msg) => AppLogger.i(msg, tag: 'UploadQueue'),
     );
 
-    // Resume tracking of previously enqueued tasks and re-deliver
-    // any status/progress updates that fired while the app was suspended.
-    await FileDownloader().start(
-      doTrackTasks: true,
-      doRescheduleKilledTasks: true,
-    );
-
-    // Register native notification config for upload tasks.
-    // Shows a persistent notification with progress bar that survives
-    // app kill (native WorkManager continues showing/updating it).
-    FileDownloader().configureNotificationForGroup(
-      'upload_queue',
-      running: TaskNotification(
-        'Uploading {displayName}',
-        '{progress} completed',
-      ),
-      complete: TaskNotification(
-        'Upload complete',
-        '{displayName} uploaded successfully',
-      ),
-      error: TaskNotification(
-        'Upload failed',
-        '{displayName} — tap to retry',
-      ),
-      progressBar: true,
-    );
-
-    // Give re-fired callbacks a moment to arrive before we inspect the queue.
-    // This ensures tasks that completed while the app was dead get their
-    // terminal status persisted to SQLite before _loadQueue decides what to
-    // re-enqueue.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
-    await _loadQueue();
-    _startQueuePump();
-  }
-
-  /// Periodic safety net:
-  /// 1. Resets items stuck in 'uploading' for >10 min (native task lost).
-  /// 2. Releases stuck Dart lock ([_isUploading] true for >5 min but no
-  ///    'uploading' item in DB).
-  /// 3. Kicks the queue if pending items should be enqueued but aren't.
-  void _startQueuePump() {
-    _queuePumpTimer?.cancel();
-    _queuePumpTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
-      final all = await UploadQueueRepository.getActive();
-      final now = DateTime.now();
-      bool recoveredAny = false;
-
-      // --- 1. Truly stale native tasks (>10 min in 'uploading') ---
-      // Skip items that have the native upload complete but are waiting
-      // for a server callback retry (e.g., auth token wasn't ready on
-      // restart). Those are handled by the callback retry check below.
-      for (final item in all) {
-        if (item.isNativeCompleted) continue;
-        final lastUpdatedParsed = DateTime.tryParse(item.lastUpdated);
-        if (item.status == 'uploading' &&
-            lastUpdatedParsed != null &&
-            now.difference(lastUpdatedParsed) > const Duration(minutes: 10)) {
-          AppLogger.w(
-            '_queuePump: resetting stale uploading item id=${item.id} '
-            '(lastUpdated=${item.lastUpdated})',
-          );
-          await UploadQueueRepository.resetStaleUploading();
-          recoveredAny = true;
-          break;
-        }
-      }
-      // refresh after mutation
-      if (recoveredAny) {
-        final refreshed = await UploadQueueRepository.getActive();
-        all
-          ..clear()
-          ..addAll(refreshed);
-      }
-
-      // --- 1a. Proactive native-status check via background_downloader's
-      // internal DB. This catches uploads that reached 100% in the
-      // system tray but whose TaskStatus.complete callback didn't fire
-      // (same issue as the progress callback).  Without this the item
-      // would sit in 'uploading' for 10 minutes before getting reset.
-      {
-        final refreshed = <UploadQueueItem>[];
-        for (final item in all) {
-          if (item.status != 'uploading' ||
-              item.isNativeCompleted ||
-              item.workerId == null ||
-              item.workerId!.isEmpty) {
-            refreshed.add(item);
-            continue;
-          }
-          try {
-            final record = await FileDownloader().database.recordForId(
-              item.workerId!,
-            );
-            if (record != null &&
-                (record.status == TaskStatus.complete ||
-                    record.progress >= 1.0)) {
-              AppLogger.i(
-                '_queuePump: native upload completed for id=${item.id} '
-                '— processing immediately',
-              );
-              unawaited(_handleNativeComplete(item.id!, item.workerId!));
-              continue; // skip adding to refreshed — will re-read on next pump
-            }
-            if (record == null) {
-              // Native task vanished (e.g. app was killed during upload).
-              // Reset to 'pending' so the queue can re-try immediately
-              // instead of being stuck in 'uploading' for 10 minutes.
-              AppLogger.w(
-                '_queuePump: native task vanished for id=${item.id} '
-                '— resetting to pending',
-              );
-              await UploadQueueRepository.updateStatus(
-                id: item.id!,
-                status: 'pending',
-              );
-              await UploadQueueRepository.updateWorkerId(
-                id: item.id!,
-                workerId: '',
-              );
-              continue; // not added to refreshed
-            }
-            if (record.progress > 0 && item.fileSize > 0) {
-              final nativeBytes = (record.progress * item.fileSize).round();
-              if (nativeBytes > item.bytesUploaded) {
-                await UploadQueueRepository.updateProgress(
-                  id: item.id!,
-                  bytesUploaded: nativeBytes,
-                );
-              }
-              // Add to refreshed with fresh timestamp so section 1's stale
-              // check doesn't reset an actively uploading multi-GB item.
-              refreshed.add(item.copyWith(
-                bytesUploaded: nativeBytes > item.bytesUploaded
-                    ? nativeBytes
-                    : item.bytesUploaded,
-                lastUpdated: DateTime.now().toIso8601String(),
-              ));
-              continue;
-            }
-          } catch (e) {
-            AppLogger.w('_queuePump: recordForId error for id=${item.id}: $e');
-          }
-          refreshed.add(item);
-        }
-        all
-          ..clear()
-          ..addAll(refreshed);
-      }
-
-      // --- 1b. Retry server callback for items where native upload
-      // completed but server callback failed (e.g. app was killed, or
-      // auth token wasn't ready on restart).
-      for (final item in all) {
-        if (item.isNativeCompleted && !item.isCallbackCompleted) {
-          AppLogger.i(
-            '_queuePump: retrying callback for item id=${item.id} '
-            'workerId=${item.workerId}',
-          );
-          unawaited(_handleNativeComplete(item.id!, item.workerId ?? ''));
-        }
-      }
-
-      // --- 2. Stuck Dart lock ---
-      if (_isUploading &&
-          _isUploadingSince != null &&
-          now.difference(_isUploadingSince!) > const Duration(minutes: 5)) {
-        final hasUploading = all.any((i) => i.status == 'uploading');
-        if (!hasUploading) {
-          AppLogger.w(
-            '_queuePump: lock stuck for >5m with no uploading item, releasing',
-          );
-          _isUploading = false;
-          _isUploadingSince = null;
-        } else {
-          return; // still uploading, nothing to do
-        }
-      }
-
-      if (_isUploading) return;
-
-      // --- 3. Kick pending items ---
-      final hasPending = all.any(
-        (i) =>
-            i.status == 'pending' &&
-            (i.workerId == null || i.workerId!.isEmpty),
-      );
-      if (hasPending) {
-        AppLogger.i('_queuePump: found stuck pending items, kicking queue');
-        _processNextItem();
-      }
-    });
-  }
-
-  Future<void> _loadQueue() async {
-    try {
-      final allItems = await UploadQueueRepository.getAll();
-      for (final item in allItems) {
-        // Recovery: native upload completed (S3) but server callback never
-        // fired (e.g. app killed during callback, or start() didn't re-fire
-        // the completion callback). Retry the callback now.
-        if (item.status == 'uploading' && item.isNativeCompleted) {
-          AppLogger.i(
-            '_loadQueue: retrying callback for completed-native item id=${item.id}',
-          );
-          unawaited(_handleNativeComplete(item.id!, item.workerId ?? ''));
-          continue;
-        }
-
-        // Proactive check: query background_downloader's internal DB for the
-        // actual native task status. This catches uploads that completed
-        // (100% in notification tray) while the app was killed, where the
-        // re-fired callback didn't arrive before _loadQueue() runs.
-        if (item.status == 'uploading' &&
-            item.workerId != null &&
-            item.workerId!.isNotEmpty) {
-          try {
-            final record = await FileDownloader().database.recordForId(
-              item.workerId!,
-            );
-            if (record != null) {
-              AppLogger.i(
-                '_loadQueue: native record for id=${item.id} '
-                'status=${record.status} progress=${(record.progress * 100).toInt()}%',
-              );
-              if (record.status == TaskStatus.complete ||
-                  record.progress >= 1.0) {
-                AppLogger.i(
-                  '_loadQueue: native upload completed for id=${item.id} '
-                  '— processing immediately',
-                );
-                unawaited(_handleNativeComplete(item.id!, item.workerId!));
-                continue;
-              }
-              if (record.status == TaskStatus.failed) {
-                AppLogger.w(
-                  '_loadQueue: native upload failed for id=${item.id}',
-                );
-                await UploadQueueRepository.markFailed(
-                  item.id!,
-                  'Native upload failed (recovered)',
-                );
-                continue;
-              }
-              // Sync progress from native DB
-              if (record.progress > 0 &&
-                  item.fileSize > 0 &&
-                  record.progress > (item.bytesUploaded / item.fileSize)) {
-                await UploadQueueRepository.updateProgress(
-                  id: item.id!,
-                  bytesUploaded: (record.progress * item.fileSize).round(),
-                );
-              }
-              // Native task is alive (record found) — claim the queue lock
-              // so _processNextItem doesn't concurrently start pending items
-              // (preserves FIFO order across app restarts).
-              if (!_isUploading) {
-                _isUploading = true;
-                _isUploadingSince = DateTime.now();
-                _activeItem = item;
-                notifyListeners();
-                AppLogger.i(
-                  '_loadQueue: claimed lock for active native upload id=${item.id} '
-                  'progress=${(record.progress * 100).toInt()}%',
-                );
-              }
-              // Skip the stale reset below even if lastUpdated is hours old
-              // (e.g. app was killed during a multi-GB upload).
-              continue;
-            } else {
-              // Native task is gone — app was probably killed while the
-              // upload was running.  Reset to 'pending' so the queue can
-              // re-fetch a URL and re-upload it.
-              AppLogger.w(
-                '_loadQueue: native task vanished for id=${item.id} '
-                '— resetting to pending',
-              );
-              await UploadQueueRepository.updateStatus(
-                id: item.id!,
-                status: 'pending',
-              );
-              await UploadQueueRepository.updateWorkerId(
-                id: item.id!,
-                workerId: '',
-              );
-              continue;
-            }
-          } catch (e) {
-            AppLogger.w(
-              '_loadQueue: error querying native record for id=${item.id}: $e',
-            );
-          }
-        }
-
-        // Reset stale 'uploading' items so they can be retried after a restart.
-        // This covers pre-migration rows that have no workerId, and tasks that
-        // were left in 'uploading' after the app was killed without a callback.
-        if (item.status == 'uploading') {
-          final lastUpdatedParsed = DateTime.tryParse(item.lastUpdated);
-          final isStale =
-              lastUpdatedParsed != null &&
-              DateTime.now().difference(lastUpdatedParsed) >
-                  const Duration(minutes: 30);
-          final missingWorker = item.workerId == null || item.workerId!.isEmpty;
-
-          if (missingWorker || isStale) {
-            AppLogger.i(
-              '_loadQueue: resetting stale uploading item id=${item.id} '
-              'workerId=${item.workerId} lastUpdated=${item.lastUpdated}',
-              tag: 'UPLOAD-QUEUE',
-            );
-            await UploadQueueRepository.updateStatus(
-              id: item.id!,
-              status: 'pending',
-            );
-            await UploadQueueRepository.updateWorkerId(
-              id: item.id!,
-              workerId: '',
-            );
-          }
-        }
-        // Remove items that never had any upload attempt (bytesUploaded == 0)
-        // and are too old to be relevant — they can never be enqueued without
-        // a fresh presigned URL. Items with bytesUploaded > 0 keep their
-        // progress so the UI can show the user where things stand.
-        if (item.status == 'pending' &&
-            item.bytesUploaded == 0 &&
-            (item.uploadUrl == null || item.uploadUrl!.isEmpty)) {
-          final age = DateTime.now().difference(DateTime.parse(item.createdAt));
-          if (age.inMinutes >= 30) {
-            AppLogger.i(
-              '_loadQueue: removing stale pending item id=${item.id} (no uploadUrl, age=${age.inMinutes}min)',
-              tag: 'UPLOAD-QUEUE',
-            );
-            await UploadQueueRepository.deleteItem(item.id!);
-          }
-        }
-      }
-
-      _queue = await UploadQueueRepository.getActive();
-      if (_queue.isNotEmpty) {
-        AppLogger.i(
-          '_loadQueue: recovered ${_queue.length} active item(s) from DB',
-        );
-        for (final item in _queue) {
-          final pct = item.fileSize > 0
-              ? ((item.bytesUploaded / item.fileSize) * 100).round()
-              : 0;
-          AppLogger.i(
-            '_loadQueue:   id=${item.id} type=${item.uploadType} '
-            'status=${item.status} progress=$pct% '
-            'title="${item.title}"',
-          );
-        }
-        final uploadingItems = _queue.where(
-          (item) => item.status == 'uploading',
-        );
-        final uploadingItem = uploadingItems.isNotEmpty
-            ? uploadingItems.first
-            : null;
-        _activeItem = uploadingItem ?? _queue.first;
-        _activeProgress = _activeItem!.fileSize > 0
-            ? ((_activeItem!.bytesUploaded / _activeItem!.fileSize) * 100)
-                  .round()
-            : 0;
-        AppLogger.i(
-          '_loadQueue: activeItem id=${_activeItem?.id} '
-          'progress=$_activeProgress%',
-        );
-      }
-      notifyListeners();
-
-      // Re-enqueue any pending items that have uploadUrl set
-      _processNextItem();
-    } catch (e) {
-      AppLogger.e('_loadQueue error: $e');
-      _queue = [];
-    }
-  }
-
-  String _inferContentType(String filePath) {
-    final ext = filePath.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'mp4':
-        return 'video/mp4';
-      case 'mov':
-        return 'video/quicktime';
-      case 'mkv':
-        return 'video/x-matroska';
-      case 'webm':
-        return 'video/webm';
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'pdf':
-        return 'application/pdf';
-      case 'doc':
-        return 'application/msword';
-      case 'docx':
-        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      case 'xls':
-        return 'application/vnd.ms-excel';
-      case 'xlsx':
-        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      case 'ppt':
-        return 'application/vnd.ms-powerpoint';
-      case 'pptx':
-        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-      default:
-        return 'application/octet-stream';
-    }
-  }
-
-  /// Resolves the MIME content type for a queue item.
-  /// For resources, reads from the stored metadata to preserve the
-  /// type inferred at queue-time by [_inferResourceContentType].
-  /// For everything else, falls back to [_inferContentType].
-  String _resolveContentType(UploadQueueItem item) {
-    if (item.uploadType == 'resource' && item.metadata != null) {
-      try {
-        final meta = ModuleLessonMetadata.fromJson(jsonDecode(item.metadata!));
-        if (meta.contentType != null && meta.contentType!.isNotEmpty) {
-          return meta.contentType!;
-        }
-      } catch (_) {}
-    }
-    return _inferContentType(item.filePath);
-  }
-
-  Future<bool> _hasInFlightFile(String filePath, {String? uploadType}) async {
-    return await UploadQueueRepository.hasInFlightFile(
-      filePath: filePath,
-      uploadType: uploadType,
-    );
-  }
-
-  /// Find and enqueue the next pending item that isn't already tracked
-  /// by a live WorkManager task.
-  ///
-  /// Sets [_isUploading] synchronously at entry to prevent race conditions
-  /// across async gaps (callers may fire this concurrently).
-  Future<void> _processNextItem() async {
-    if (_isUploading) return;
-    _isUploading = true;
-    _isUploadingSince = DateTime.now();
-
-    // Preserve FIFO: if a native upload is already running (from before
-    // app restart), don't start the next pending item yet.
-    final existing = await UploadQueueRepository.getActive();
-    if (existing.any((i) => i.status == 'uploading' && i.workerId != null && i.workerId!.isNotEmpty)) {
-      AppLogger.i('_processNextItem: native upload active, deferring FIFO');
-      _isUploading = false;
-      _isUploadingSince = null;
-      return;
+    UploadEngine engine;
+    if (Platform.isAndroid || Platform.isIOS) {
+      engine = NativeBackgroundEngine(config);
+      _nativeEngine = engine as NativeBackgroundEngine;
+    } else {
+      engine = DartHttpEngine(config);
     }
 
-    UploadQueueItem? candidate;
-    try {
-      candidate = await UploadQueueRepository.claimNextPendingItem();
-
-      if (candidate == null || candidate.id == null) {
-        AppLogger.i('_processNextItem: no item to enqueue');
-        _isUploading = false;
-        _isUploadingSince = null;
-        return;
-      }
-
-      AppLogger.i('_processNextItem: claimed pending item id=${candidate.id}');
-
-      _queue = await UploadQueueRepository.getActive();
-      _activeItem = candidate;
-      _activeProgress = candidate.bytesUploaded > 0
-          ? ((candidate.bytesUploaded / candidate.fileSize) * 100).round()
-          : 0;
-      notifyListeners();
-
-      // Refresh URLs if the presigned URL may have expired while
-      // waiting in the queue (resources: 1 h expiry, videos: 24 h).
-      if (_isUrlStale(candidate)) {
-        final freshUrls = await _fetchFreshUrls(candidate);
-        if (freshUrls == null) {
-          AppLogger.e(
-            '_processNextItem: URL refresh failed for id=${candidate.id}',
-          );
-          await UploadQueueRepository.markFailed(
-            candidate.id!,
-            'Upload URL expired and could not be refreshed',
-          );
-          await _onItemTerminal(candidate.id!);
-          return;
-        }
-        await UploadQueueRepository.updateUrls(
-          id: candidate.id!,
-          uploadUrl: freshUrls['uploadUrl']!,
-          fileUrl: freshUrls['fileUrl']!,
-        );
-        candidate = candidate.copyWith(
-          uploadUrl: freshUrls['uploadUrl']!,
-          fileUrl: freshUrls['fileUrl']!,
-          lastUpdated: DateTime.now().toIso8601String(),
-        );
-        _activeItem = candidate;
-        AppLogger.i('_processNextItem: URL refreshed for id=${candidate.id}');
-      }
-
-      _activeItem ??= candidate;
-      _activeProgress = 0;
-      // Keep the Dart isolate alive for reliable callback delivery
-      await UploadNotificationService.startService();
-      await UploadQueueRepository.updateStatus(
-        id: candidate.id!,
-        status: 'uploading',
-      );
-      notifyListeners();
-
-      final taskId = await BackgroundUploaderService.enqueueUpload(
-        itemId: candidate.id!,
-        filePath: candidate.filePath,
-        uploadUrl: candidate.uploadUrl!,
-        contentType: _resolveContentType(candidate),
-        displayName: candidate.title,
-      );
-
-      if (taskId == null) {
-        AppLogger.e(
-          '_processNextItem: enqueueUpload returned null for id=${candidate.id}',
-        );
-        await UploadQueueRepository.markFailed(
-          candidate.id!,
-          'Failed to start native upload',
-        );
-        await _onItemTerminal(candidate.id!);
-        return;
-      }
-      AppLogger.i('_processNextItem: enqueued successfully, taskId=$taskId');
-
-      await UploadQueueRepository.updateWorkerId(
-        id: candidate.id!,
-        workerId: taskId,
-      );
-    } catch (e) {
-      AppLogger.e('_processNextItem: exception: $e');
-      _isUploading = false;
-      _isUploadingSince = null;
-      if (candidate != null && _activeItem?.id == candidate.id) {
-        _activeItem = null;
-        _activeProgress = 0;
-      }
-      if (candidate != null && candidate.id != null) {
-        await UploadQueueRepository.markFailed(
-          candidate.id!,
-          'Enqueue error: $e',
-        );
-        await _onItemTerminal(candidate.id!);
-      }
-      return;
-    }
+    _queue = UploadQueue(config: engine.config, engine: engine);
+    _updateSub = _queue.onUpdate.listen((_) => notifyListeners());
   }
 
-  /// Whether the item's presigned upload URL is likely expired.
-  /// Resource URLs expire in ~1 hour, video URLs in ~24 hours.
-  bool _isUrlStale(UploadQueueItem item) {
-    final age = DateTime.now().difference(DateTime.parse(item.lastUpdated));
-    final limit = item.uploadType == 'resource'
-        ? const Duration(minutes: 50)
-        : const Duration(hours: 23);
-    return age > limit;
+  @override
+  Future<void> dispose() async {
+    _updateSub?.cancel();
+    await _queue.dispose();
+    super.dispose();
   }
 
-  /// Fetch a fresh presigned URL for an item that has been waiting in the
-  /// queue long enough that its original URL may have expired.
-  /// Reusable from [retryFailed] / [_retryItem] and [_processNextItem].
-  Future<Map<String, String>?> _fetchFreshUrls(UploadQueueItem item) async {
-    String endpoint;
-    Map<String, dynamic> Function(String) buildPayload;
-    Map<String, dynamic> extraFields = {};
+  // ──────────────────────────────────────────────
+  //  Init Body Builder (per upload type)
+  // ──────────────────────────────────────────────
 
-    switch (item.uploadType) {
+  Map<String, dynamic> _buildInitBody(
+    String fileName,
+    Map<String, dynamic>? extraFields,
+  ) {
+    final type = extraFields?['uploadType'] as String? ?? 'video_post';
+    switch (type) {
       case 'course':
-        endpoint = Urls.courseAssetsUploadUrl;
-        buildPayload = (name) => {
-          'thumbnailFilename': name,
-          'thumbnailContentType': BackgroundUploadService.inferImageContentType(
-            name,
-          ),
+      case 'course_thumb':
+        _pendingCourseAssetKey = 'thumbnail';
+        return {
+          'thumbnailFilename': fileName,
+          'thumbnailContentType': _inferImageContentType(fileName),
+          if (extraFields?['fileSize'] != null)
+            'thumbnailFileSize': extraFields!['fileSize'],
         };
-        break;
-      case 'module_lesson':
-        endpoint = Urls.courseModuleUploadUrl;
-        buildPayload = (name) => {
-          'videoFilename': name,
-          'videoContentType': BackgroundUploadService.inferVideoContentType(
-            name,
-          ),
-        };
-        if (item.metadata != null) {
-          final meta = ModuleLessonMetadata.fromJson(
-            jsonDecode(item.metadata!),
-          );
-          extraFields = {'moduleID': meta.moduleId};
-        }
-        break;
-      case 'resource':
-        endpoint = Urls.courseModuleResourceUploadUrl;
-        buildPayload = (name) {
-          final ct = item.metadata != null
-              ? (jsonDecode(item.metadata!) as Map)['contentType'] ??
-                    'application/octet-stream'
-              : 'application/octet-stream';
-          return {'filename': name, 'contentType': ct};
-        };
-        break;
       case 'course_intro':
-        endpoint = Urls.courseAssetsUploadUrl;
-        buildPayload = (name) => {
+        _pendingCourseAssetKey = 'video';
+        return {
           'thumbnailFilename': 'keep.jpg',
           'thumbnailContentType': 'image/jpeg',
-          'videoFilename': name,
-          'videoContentType': BackgroundUploadService.inferVideoContentType(
-            name,
-          ),
+          'thumbnailFileSize': 0,
+          'videoFilename': fileName,
+          'videoContentType': _inferVideoContentType(fileName),
+          if (extraFields?['fileSize'] != null)
+            'videoFileSize': extraFields!['fileSize'],
         };
-        break;
-      default:
-        // video_post
-        endpoint = Urls.videoPostAssetsUploadUrl;
-        buildPayload = (name) => {
-          'videoFilename': name,
-          'videoContentType': BackgroundUploadService.inferVideoContentType(
-            name,
-          ),
+      case 'module_lesson':
+        return {
+          'videoFilename': fileName,
+          'videoContentType': _inferVideoContentType(fileName),
+          'videoFileSize': extraFields?['fileSize'] ?? 0,
+          if (extraFields?['moduleId'] != null)
+            'moduleID': extraFields!['moduleId'],
+        };
+      case 'resource':
+        final ct =
+            extraFields?['contentType'] as String? ??
+            'application/octet-stream';
+        return {'filename': fileName, 'contentType': ct};
+      default: // video_post
+        return {
+          'videoFilename': fileName,
+          'videoContentType': _inferVideoContentType(fileName),
+          if (extraFields?['fileSize'] != null)
+            'videoFileSize': extraFields!['fileSize'],
         };
     }
-
-    return BackgroundUploadService.fetchPresignedUrl(
-      filePath: item.filePath,
-      endpoint: endpoint,
-      buildPayload: buildPayload,
-      extraFields: extraFields,
-    );
   }
 
   // ──────────────────────────────────────────────
-  //  Native callback handlers (called from registered
-  //  TaskStatusCallback / TaskProgressCallback)
+  //  Response Parsers (handles nested course format)
   // ──────────────────────────────────────────────
 
-  Future<void> _onNativeTaskStatus(TaskStatusUpdate update) async {
-    final itemId = _extractItemId(update.task);
-    AppLogger.i(
-      '_onNativeTaskStatus: item=$itemId status=${update.status} taskId=${update.task.taskId}',
-    );
-    if (itemId == null) return;
-
-    // Skip if item already reached a terminal state (e.g. cancelled then a
-    // stale 'failed' arrives from the now-stopped native worker's finally block)
-    final allItems = await UploadQueueRepository.getAll();
-    final item = allItems.where((i) => i.id == itemId).firstOrNull;
-    if (item == null) return;
-    if (item.status == 'completed' || item.status == 'cancelled') {
-      AppLogger.i(
-        '_onNativeTaskStatus: item=$itemId already ${item.status}, skipping',
-      );
-      return;
+  InitUploadResponse _parseInitResponse(Map<String, dynamic> json) {
+    final d = json['data'] is Map ? json['data'] as Map<String, dynamic> : json;
+    final nested = d['data'] as Map<String, dynamic>?;
+    if (nested != null &&
+        (nested.containsKey('thumbnail') || nested.containsKey('video'))) {
+      final section =
+          nested[_pendingCourseAssetKey ?? 'thumbnail']
+              as Map<String, dynamic>?;
+      if (section != null) return InitUploadResponse.fromJson(section);
     }
-
-    switch (update.status) {
-      case TaskStatus.complete:
-        await _handleNativeComplete(itemId, update.task.taskId);
-        break;
-      case TaskStatus.failed:
-        await UploadQueueRepository.markFailed(itemId, 'Native upload failed');
-        await _onItemTerminal(itemId);
-        break;
-      case TaskStatus.canceled:
-        await UploadQueueRepository.updateStatus(
-          id: itemId,
-          status: 'cancelled',
-        );
-        await UploadQueueRepository.updateWorkerId(id: itemId, workerId: '');
-        await _onItemTerminal(itemId);
-        break;
-      default:
-        break;
-    }
+    return InitUploadResponse.fromJson(json);
   }
 
-  Future<void> _onNativeTaskProgress(TaskProgressUpdate update) async {
-    final itemId = _extractItemId(update.task);
-    if (itemId == null) return;
-
-    _progressUpdateCount++;
-
-    // background_downloader uses negative sentinel values for special
-    // states: -4.0 = waitingToRetry, -1.0 = failed, -2.0 = canceled, etc.
-    // Clamp to 0..100 so the UI never shows "-400%".
-    final pct = max(0, (update.progress * 100).round());
-    AppLogger.i('_onNativeTaskProgress: item=$itemId progress=$pct%');
-
-    // Update in-memory state for immediate UI feedback.
-    if (_activeItem?.id == itemId) {
-      _activeProgress = pct;
-      notifyListeners();
-    }
-
-    // Persist progress to SQLite so it survives app restart.
-    // Throttle: only write when crossing a whole-percent boundary to
-    // avoid thousands of writes during a multi-GB upload.
-    if (update.progress >= 0) {
-      final items = await UploadQueueRepository.getAll();
-      final item = items.where((i) => i.id == itemId).firstOrNull;
-      if (item != null && item.fileSize > 0) {
-        final bytes = (update.progress * item.fileSize).round();
-        if (bytes > item.bytesUploaded) {
-          await UploadQueueRepository.updateProgress(
-            id: itemId,
-            bytesUploaded: bytes,
-          );
-          // Native background_downloader notification handles progress display
-          // via configureNotificationForGroup — no Dart-side notification needed.
-        }
-      }
-    }
-
-    // Periodic WAL checkpoint every 200 progress ticks (~every 100s)
-    // to prevent unbounded WAL growth during long uploads.
-    if (_progressUpdateCount % 200 == 0) {
-      unawaited(UploadQueueRepository.checkpointWal());
-    }
+  String? _parseCompleteResponse(Map<String, dynamic> json) {
+    final d = json['data'] is Map ? json['data'] as Map<String, dynamic> : json;
+    return d['fileUrl'] as String?;
   }
 
-  int? _extractItemId(Task task) {
-    if (task.metaData.isEmpty) return null;
-    try {
-      final map = jsonDecode(task.metaData) as Map<String, dynamic>;
-      return map['itemId'] as int?;
-    } catch (_) {
-      return null;
-    }
-  }
+  // ──────────────────────────────────────────────
+  //  Complete-Multipart Extra Fields
+  //  The shared /video-post/upload/complete endpoint expects exactly
+  //  {key, uploadId, parts}. The `key` is injected by the queue from the
+  //  persisted S3 key, so no per-type extras are needed here. Kept as a hook
+  //  in case a future asset type needs additional context on completion.
+  // ──────────────────────────────────────────────
 
-  /// Called when the native S3 upload completes (TaskStatus.complete).
-  /// Sends the server callback, then marks the item complete.
-  Future<void> _handleNativeComplete(int itemId, String taskId) async {
-    if (!_handlingNativeComplete.add(itemId)) {
-      AppLogger.w(
-        '_handleNativeComplete: already handling item=$itemId, skipping',
-      );
-      return;
-    }
-    AppLogger.i('_handleNativeComplete: item=$itemId taskId=$taskId');
-    try {
-      await UploadQueueRepository.markNativeCompleted(itemId);
+  Map<String, dynamic> _buildCompleteExtraFields(UploadTask task) => const {};
 
-      final all = await UploadQueueRepository.getAll();
-      final item = all.where((i) => i.id == itemId).firstOrNull;
-      if (item == null) {
-        await _onItemTerminal(itemId);
-        return;
-      }
+  // ──────────────────────────────────────────────
+  //  Callback Builder (per upload type)
+  // ──────────────────────────────────────────────
 
-      final callbackSent = await _sendCallbackForItem(item);
-      if (!callbackSent) {
-        // S3 upload succeeded but server callback failed (e.g. auth token
-        // not ready on restart, network issue). DON'T mark as failed —
-        // keep as 'uploading' with nativeMarkedCompleted=1 so the retry
-        // loop (in _loadQueue + _queuePump) picks it up on the next cycle.
-        AppLogger.w(
-          '_handleNativeComplete: callback failed for item $itemId '
-          '— will retry on next queue pump cycle',
-        );
-        await _onItemTerminal(itemId);
-        return;
-      }
-
-      await UploadQueueRepository.markCallbackCompleted(itemId);
-      await UploadQueueRepository.markCompleted(itemId);
-      await _cleanupCachedFile(item.filePath);
-      await _onItemTerminal(itemId);
-    } catch (e) {
-      AppLogger.e('_handleNativeComplete error for item $itemId: $e');
-      // Don't mark as failed — same retry logic as above
-      await _onItemTerminal(itemId);
-    } finally {
-      _handlingNativeComplete.remove(itemId);
-    }
-  }
-
-  /// Send server callback after S3 upload completes.
-  /// Reconstructs the callback body from the item's metadata and uploadType.
-  Future<bool> _sendCallbackForItem(UploadQueueItem item) async {
-    final token = AuthController.accessToken;
-    if (token == null) {
-      AppLogger.w('_sendCallbackForItem: no auth token');
-      return false;
-    }
-
-    final details = _buildCallbackDetails(item);
-    if (details == null) return false;
-
-    return BackgroundUploaderService.sendServerCallback(
-      callbackUrl: details.url,
-      authToken: token,
-      body: details.body,
-      idempotencyKey: '${item.uploadId ?? item.id}_callback',
-    );
-  }
-
-  _CallbackDetails? _buildCallbackDetails(UploadQueueItem item) {
-    switch (item.uploadType) {
+  CallbackRequest _buildCallback(UploadTask task) {
+    final type = task.metadata?['uploadType'] as String? ?? 'video_post';
+    final idempotencyKey = '${task.id}_callback';
+    switch (type) {
       case 'course':
-        final meta = item.metadata != null
-            ? CourseUploadMetadata.fromJson(jsonDecode(item.metadata!))
-            : null;
-        return _CallbackDetails(
+        return CallbackRequest(
           url: Urls.createCourseUrl,
           body: {
-            'title': meta?.courseTitle ?? item.title,
-            'description': meta?.description ?? '',
-            'shortDescription': meta?.shortDescription ?? '',
-            'requirements': meta?.requirements ?? '',
-            'thumbnailUrl': item.fileUrl,
-            if (meta?.videoPath != null) 'introVideoUrl': meta!.videoPath,
-            'language': meta?.language ?? '',
-            'level': (meta?.level ?? '').toUpperCase(),
-            'type': (meta?.type ?? 'FREE').toUpperCase(),
-            'price': meta?.price ?? 0,
+            'title': task.metadata?['courseTitle'] ?? task.title,
+            'description': task.metadata?['description'] ?? '',
+            'shortDescription': task.metadata?['shortDescription'] ?? '',
+            'requirements': task.metadata?['requirements'] ?? '',
+            'thumbnailUrl': task.fileUrl,
+            if (task.metadata?['videoPath'] != null)
+              'introVideoUrl': task.metadata!['videoPath'],
+            'language': task.metadata?['language'] ?? '',
+            'level': (task.metadata?['level'] ?? '').toString().toUpperCase(),
+            'type': (task.metadata?['type'] ?? 'FREE').toString().toUpperCase(),
+            'price': task.metadata?['price'] ?? 0,
           },
+          idempotencyKey: idempotencyKey,
         );
-
       case 'module_lesson':
-        final meta = item.metadata != null
-            ? ModuleLessonMetadata.fromJson(jsonDecode(item.metadata!))
-            : null;
-        return _CallbackDetails(
+        return CallbackRequest(
           url: Urls.courseModuleLessonUrl,
           body: {
-            'title': meta?.lessonTitle ?? item.title,
-            'moduleId': meta?.moduleId,
-            'videoUrl': item.fileUrl,
-            'duration': item.videoDuration,
-            'fileSize': item.fileSize,
+            'title': task.metadata?['lessonTitle'] ?? task.title,
+            'moduleId': task.metadata?['moduleId'],
+            'videoUrl': task.fileUrl,
+            'duration': task.metadata?['videoDuration'] ?? 0,
+            'fileSize': task.metadata?['fileSize'] ?? 0,
           },
+          idempotencyKey: idempotencyKey,
         );
-
       case 'resource':
-        final meta = item.metadata != null
-            ? ModuleLessonMetadata.fromJson(jsonDecode(item.metadata!))
-            : null;
-        final ct = meta?.contentType ?? 'application/octet-stream';
-        return _CallbackDetails(
+        return CallbackRequest(
           url: Urls.courseModuleResourceUrl,
           body: {
-            'title': meta?.lessonTitle ?? item.title,
-            'fileUrl': item.fileUrl,
-            'moduleId': meta?.moduleId,
-            'fileType': ct,
-            'fileSize': item.fileSize,
+            'title': task.metadata?['lessonTitle'] ?? task.title,
+            'fileUrl': task.fileUrl,
+            'moduleId': task.metadata?['moduleId'],
+            'fileType':
+                task.metadata?['contentType'] ?? 'application/octet-stream',
+            'fileSize': task.metadata?['fileSize'] ?? 0,
           },
+          idempotencyKey: idempotencyKey,
         );
-
       case 'course_intro':
-        return _CallbackDetails(
+        return CallbackRequest(
           url: Urls.courseAssetsUploadUrl,
-          body: {'title': item.title, 'videoUrl': item.fileUrl},
+          body: {'title': task.title, 'videoUrl': task.fileUrl},
+          idempotencyKey: idempotencyKey,
         );
-
-      default:
-        // video_post
-        return _CallbackDetails(
+      default: // video_post
+        return CallbackRequest(
           url: Urls.videoPostUrl,
           body: {
-            'title': item.title,
-            'videoUrl': item.fileUrl,
-            'duration': item.videoDuration,
-            'fileSize': item.fileSize,
+            'title': task.title,
+            'videoUrl': task.fileUrl,
+            'duration': task.metadata?['videoDuration'] ?? 0,
+            'fileSize': task.metadata?['fileSize'] ?? 0,
           },
+          idempotencyKey: idempotencyKey,
         );
     }
   }
 
-  /// Called when an item reaches a terminal state (completed/failed/cancelled).
-  /// Releases the queue lock (only if [id] matches the currently active item)
-  /// and starts the next pending item if any.
-  Future<void> _onItemTerminal(int id) async {
-    if (_activeItem?.id == id) {
-      _isUploading = false;
-      _isUploadingSince = null;
-      _activeItem = null;
-      _activeProgress = 0;
-    }
-    _queue = await UploadQueueRepository.getActive();
-    notifyListeners();
-    if (_queue.isEmpty) {
-      await UploadNotificationService.stopService();
-    }
-    _processNextItem();
-  }
-
   // ──────────────────────────────────────────────
-  //  Public queue methods
+  //  Public Queue Methods
   // ──────────────────────────────────────────────
 
-  /// Video post: queue → fetch presigned URL → start upload.
   Future<bool> addToQueue(File file, String title) async {
+    debugPrint('[addToQueue] start file=${file.path} title=$title');
     try {
       if (await _hasInFlightFile(file.path)) {
+        debugPrint('[addToQueue] file already in flight');
         ToastService.showError('This file is already being uploaded');
         return false;
       }
+      debugPrint('[addToQueue] no duplicate found');
 
       final duration = await VideoMetadataHelper.getDurationSeconds(file.path);
       final fileSize = await VideoMetadataHelper.getFileSizeBytes(file.path);
+      debugPrint('[addToQueue] duration=$duration fileSize=$fileSize');
 
       final permission = await _ensureNotificationPermission();
+      debugPrint('[addToQueue] notification permission=$permission');
       if (!permission) {
         ToastService.showError('Notification permission required to upload');
         return false;
       }
 
-      final item = UploadQueueItem(
-        filePath: file.path,
+      debugPrint('[addToQueue] calling _queue.add()');
+      await _queue.add(
+        file: file,
         title: title,
-        videoDuration: duration,
-        fileSize: fileSize,
-        status: 'pending',
-        uploadType: 'video_post',
-      );
-
-      final insertResult = await UploadQueueRepository.insert(item);
-      final id = insertResult['id'] as int;
-      _queue = await UploadQueueRepository.getActive();
-      notifyListeners();
-
-      final urls = await BackgroundUploadService.fetchPresignedUrl(
-        filePath: file.path,
-        endpoint: Urls.videoPostAssetsUploadUrl,
-        buildPayload: (name) => {
-          'videoFilename': name,
-          'videoContentType': BackgroundUploadService.inferVideoContentType(name),
+        metadata: {
+          'uploadType': 'video_post',
+          'videoDuration': duration,
+          'fileSize': fileSize,
+          'initEndpoint': Urls.videoPostAssetsUploadUrl,
         },
       );
-      if (urls == null) {
-        await _cleanupFailedUpload(id, file.path);
-        ToastService.showError('Failed to get upload URL');
-        return false;
-      }
-      await UploadQueueRepository.updateUrls(
-        id: id,
-        uploadUrl: urls['uploadUrl']!,
-        fileUrl: urls['fileUrl']!,
-      );
-      _processNextItem();
+      debugPrint('[addToQueue] _queue.add() completed');
       ToastService.showSuccess('Video queued for upload');
       return true;
     } catch (e) {
+      debugPrint('[addToQueue] exception: $e');
       AppLogger.e('addToQueue error - $e');
       ToastService.showError('Failed to queue video. Please try again.');
       return false;
+    }
+  }
+
+  Future<int> addModuleLessonToQueue({
+    required String videoPath,
+    required String lessonTitle,
+    required int moduleId,
+    required int courseId,
+    int? lessonId,
+  }) async {
+    debugPrint(
+      '[addModuleLessonToQueue] start path=$videoPath title=$lessonTitle moduleId=$moduleId',
+    );
+    try {
+      if (_adding) {
+        debugPrint('[addModuleLessonToQueue] _adding=true, returning 0');
+        return 0;
+      }
+      if (!File(videoPath).existsSync()) {
+        debugPrint('[addModuleLessonToQueue] file not found: $videoPath');
+        ToastService.showError('Video file not found');
+        return 0;
+      }
+      debugPrint('[addModuleLessonToQueue] file exists');
+
+      if (await _hasInFlightFile(videoPath, uploadType: 'module_lesson')) {
+        debugPrint('[addModuleLessonToQueue] file already in flight');
+        ToastService.showError('This video is already in the upload queue');
+        return 0;
+      }
+      debugPrint('[addModuleLessonToQueue] no duplicate');
+
+      final permission = await _ensureNotificationPermission();
+      debugPrint(
+        '[addModuleLessonToQueue] notification permission=$permission',
+      );
+      if (!permission) {
+        ToastService.showError('Notification permission required to upload');
+        return 0;
+      }
+
+      if (await _hasInFlightFile(videoPath, uploadType: 'module_lesson')) {
+        debugPrint('[addModuleLessonToQueue] file already in flight (check 2)');
+        ToastService.showError('This video is already in the upload queue');
+        return 0;
+      }
+
+      _adding = true;
+      final videoFile = File(videoPath);
+      final fileSize = await videoFile.length();
+      final duration = await VideoMetadataHelper.getDurationSeconds(videoPath);
+      debugPrint(
+        '[addModuleLessonToQueue] fileSize=$fileSize duration=$duration',
+      );
+
+      debugPrint('[addModuleLessonToQueue] calling _queue.add()');
+      final task = await _queue.add(
+        file: videoFile,
+        title: lessonTitle,
+        metadata: {
+          'uploadType': 'module_lesson',
+          'moduleId': moduleId,
+          'courseId': courseId,
+          'lessonId': lessonId,
+          'lessonTitle': lessonTitle,
+          'videoDuration': duration,
+          'fileSize': fileSize,
+          'initEndpoint': Urls.courseModuleUploadUrl,
+        },
+      );
+      debugPrint(
+        '[addModuleLessonToQueue] _queue.add() returned task.id=${task.id}',
+      );
+      ToastService.showSuccess('Your video is being uploaded');
+      return task.id;
+    } catch (e) {
+      debugPrint('[addModuleLessonToQueue] exception: $e');
+      AppLogger.e('addModuleLessonToQueue error: $e');
+      ToastService.showError('Failed to queue video lesson');
+      return 0;
+    } finally {
+      _adding = false;
+      debugPrint('[addModuleLessonToQueue] finished');
+    }
+  }
+
+  Future<int> addResourceToQueue({
+    required String filePath,
+    required String lessonTitle,
+    required int moduleId,
+    required int courseId,
+    required String contentType,
+    int? lessonId,
+  }) async {
+    try {
+      if (_adding) return 0;
+      if (!File(filePath).existsSync()) {
+        ToastService.showError('Resource file not found');
+        return 0;
+      }
+
+      if (await _hasInFlightFile(filePath, uploadType: 'resource')) {
+        ToastService.showError('This resource is already in the upload');
+        return 0;
+      }
+
+      final permission = await _ensureNotificationPermission();
+      if (!permission) {
+        ToastService.showError('Notification permission required to upload');
+        return 0;
+      }
+
+      if (await _hasInFlightFile(filePath, uploadType: 'resource')) {
+        ToastService.showError('This resource is already in the upload');
+        return 0;
+      }
+
+      _adding = true;
+      final resourceFile = File(filePath);
+      final fileSize = await resourceFile.length();
+
+      final task = await _queue.add(
+        file: resourceFile,
+        title: lessonTitle,
+        metadata: {
+          'uploadType': 'resource',
+          'moduleId': moduleId,
+          'courseId': courseId,
+          'lessonId': lessonId,
+          'lessonTitle': lessonTitle,
+          'contentType': contentType,
+          'fileSize': fileSize,
+          'initEndpoint': Urls.courseModuleResourceUploadUrl,
+        },
+      );
+      ToastService.showSuccess('Your Resource is being uploaded');
+      return task.id;
+    } catch (e) {
+      AppLogger.e('addResourceToQueue error: $e');
+      ToastService.showError('Failed to queue resource');
+      return 0;
+    } finally {
+      _adding = false;
     }
   }
 
@@ -1048,92 +476,74 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     required double price,
     String? introVideoUrl,
   }) async {
-    final meta = CourseUploadMetadata(
-      courseTitle: title,
-      shortDescription: shortDescription,
-      description: description,
-      requirements: requirements,
-      language: language,
-      level: level,
-      type: type,
-      price: price,
-      videoPath: introVideoUrl != null ? null : videoPath,
-    );
+    try {
+      if (_adding) return 0;
 
-    final metadataJson = jsonEncode(meta.toJson());
-    final thumbFile = File(thumbnailPath);
-    final thumbSize = await thumbFile.length();
-
-    final permission = await _ensureNotificationPermission();
-    if (!permission) {
-      ToastService.showError('Notification permission required to upload');
-      return 0;
-    }
-
-    final item = UploadQueueItem(
-      filePath: thumbnailPath,
-      title: 'Course: $title',
-      fileSize: thumbSize,
-      status: 'pending',
-      uploadType: 'course',
-      metadata: metadataJson,
-    );
-
-    final insertResult = await UploadQueueRepository.insert(item);
-    final id = insertResult['id'] as int;
-    _queue = await UploadQueueRepository.getActive();
-    notifyListeners();
-
-    final bool externalIntro = introVideoUrl != null;
-    final String? effectiveVideoPath = externalIntro ? null : videoPath;
-
-    final urls = await BackgroundUploadService.fetchCoursePresignedUrls(
-      thumbnailPath: thumbnailPath,
-      videoPath: effectiveVideoPath,
-    );
-
-    if (urls == null) {
-      await _cleanupFailedUpload(id, thumbnailPath);
-      ToastService.showError('Failed to get upload URLs');
-      return 0;
-    }
-
-    final thumbnailUploadUrl = urls['thumbnailUploadUrl']!;
-    final thumbnailFileUrl = urls['thumbnailFileUrl']!;
-
-    if (!externalIntro && videoPath != null) {
-      final videoUploadUrl = urls['videoUploadUrl'];
-      final videoFileUrl = urls['videoFileUrl'];
-      if (videoUploadUrl != null && videoFileUrl != null) {
-        final videoItem = UploadQueueItem(
-          filePath: videoPath,
-          title: 'Course intro video: $title',
-          fileSize: await File(videoPath).length(),
-          status: 'pending',
-          uploadType: 'course_intro',
-          metadata: metadataJson,
-        );
-        final videoInsert = await UploadQueueRepository.insert(videoItem);
-        final videoId = videoInsert['id'] as int;
-        await UploadQueueRepository.updateUrls(
-          id: videoId,
-          uploadUrl: videoUploadUrl,
-          fileUrl: videoFileUrl,
-        );
-        _queue = await UploadQueueRepository.getActive();
-        notifyListeners();
+      if (await _hasInFlightFile(thumbnailPath, uploadType: 'course')) {
+        ToastService.showError('This thumbnail is already uploading');
+        return 0;
       }
+
+      final permission = await _ensureNotificationPermission();
+      if (!permission) {
+        ToastService.showError('Notification permission required to upload');
+        return 0;
+      }
+
+      if (await _hasInFlightFile(thumbnailPath, uploadType: 'course')) {
+        ToastService.showError('This thumbnail is already uploading');
+        return 0;
+      }
+
+      _adding = true;
+      final meta = CourseUploadMetadata(
+        courseTitle: title,
+        shortDescription: shortDescription,
+        description: description,
+        requirements: requirements,
+        language: language,
+        level: level,
+        type: type,
+        price: price,
+        videoPath: introVideoUrl != null ? null : videoPath,
+      );
+
+      final thumbFile = File(thumbnailPath);
+      final thumbSize = await thumbFile.length();
+
+      final task = await _queue.add(
+        file: thumbFile,
+        title: 'Course: $title',
+        metadata: {
+          'uploadType': 'course',
+          ...meta.toJson(),
+          'fileSize': thumbSize,
+          'initEndpoint': Urls.courseAssetsUploadUrl,
+        },
+      );
+      final id = task.id;
+
+      if (introVideoUrl == null && videoPath != null) {
+        await _queue.add(
+          file: File(videoPath),
+          title: 'Course intro video: $title',
+          metadata: {
+            'uploadType': 'course_intro',
+            'videoPath': videoPath,
+            'initEndpoint': Urls.courseAssetsUploadUrl,
+          },
+        );
+      }
+
+      ToastService.showSuccess('Course upload queued');
+      return id;
+    } catch (e) {
+      AppLogger.e('addCourseToQueue error: $e');
+      ToastService.showError('Failed to queue course');
+      return 0;
+    } finally {
+      _adding = false;
     }
-
-    await UploadQueueRepository.updateUrls(
-      id: id,
-      uploadUrl: thumbnailUploadUrl,
-      fileUrl: thumbnailFileUrl,
-    );
-
-    ToastService.showSuccess('Course upload queued');
-    _processNextItem();
-    return id;
   }
 
   Future<String?> addCourseIntroVideo({
@@ -1146,56 +556,26 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
         return null;
       }
 
-      final file = File(filePath);
-      final fileSize = await file.length();
-
       final permission = await _ensureNotificationPermission();
       if (!permission) {
         ToastService.showError('Notification permission required to upload');
         return null;
       }
 
-      final item = UploadQueueItem(
-        filePath: filePath,
+      final file = File(filePath);
+      final fileSize = await file.length();
+
+      final task = await _queue.add(
+        file: file,
         title: title,
-        fileSize: fileSize,
-        status: 'pending',
-        uploadType: 'course_intro',
+        metadata: {
+          'uploadType': 'course_intro',
+          'fileSize': fileSize,
+          'initEndpoint': Urls.courseAssetsUploadUrl,
+        },
       );
-
-      final insertResult = await UploadQueueRepository.insert(item);
-      final id = insertResult['id'] as int;
-      _queue = await UploadQueueRepository.getActive();
-      notifyListeners();
-
-      final urls = await BackgroundUploadService.fetchCoursePresignedUrls(
-        thumbnailPath: filePath,
-        videoPath: filePath,
-      );
-
-      if (urls == null) {
-        await _cleanupFailedUpload(id, filePath);
-        ToastService.showError('Failed to get upload URL');
-        return null;
-      }
-
-      final videoUploadUrl = urls['videoUploadUrl'];
-      final videoFileUrl = urls['videoFileUrl'];
-      if (videoUploadUrl == null || videoFileUrl == null) {
-        await _cleanupFailedUpload(id, filePath);
-        ToastService.showError('Server did not provide a video upload URL');
-        return null;
-      }
-
-      await UploadQueueRepository.updateUrls(
-        id: id,
-        uploadUrl: videoUploadUrl,
-        fileUrl: videoFileUrl,
-      );
-
       ToastService.showSuccess('Intro video queued');
-      _processNextItem();
-      return videoFileUrl;
+      return task.fileUrl;
     } catch (e) {
       AppLogger.e('addCourseIntroVideo error: $e');
       ToastService.showError('Failed to queue intro video');
@@ -1212,66 +592,47 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     if (thumbnailPath == null && videoPath == null) return {};
 
     try {
-      final urls = await BackgroundUploadService.fetchCoursePresignedUrls(
-        thumbnailPath: thumbnailPath ?? videoPath!,
-        videoPath: videoPath,
-      );
-
-      if (urls == null) {
-        ToastService.showError('Failed to get upload URLs');
+      final permission = await _ensureNotificationPermission();
+      if (!permission) {
+        ToastService.showError('Notification permission required to upload');
         return null;
       }
 
       if (thumbnailPath != null) {
-        final thumbUploadUrl = urls['thumbnailUploadUrl'];
-        final thumbFileUrl = urls['thumbnailFileUrl'];
-        if (thumbUploadUrl != null && thumbFileUrl != null) {
-          final item = UploadQueueItem(
-            filePath: thumbnailPath,
-            title: 'Course thumbnail: $courseTitle',
-            fileSize: await File(thumbnailPath).length(),
-            status: 'pending',
-            uploadType: 'course_thumb',
-          );
-          final insert = await UploadQueueRepository.insert(item);
-          final id = insert['id'] as int;
-          await UploadQueueRepository.updateUrls(
-            id: id,
-            uploadUrl: thumbUploadUrl,
-            fileUrl: thumbFileUrl,
-          );
+        if (await _hasInFlightFile(thumbnailPath, uploadType: 'course_thumb')) {
+          ToastService.showError('This thumbnail is already uploading');
+          return null;
         }
+        final thumbFile = File(thumbnailPath);
+        await _queue.add(
+          file: thumbFile,
+          title: 'Course thumbnail: $courseTitle',
+          metadata: {
+            'uploadType': 'course_thumb',
+            'initEndpoint': Urls.courseAssetsUploadUrl,
+          },
+        );
       }
 
       if (videoPath != null) {
-        final videoUploadUrl = urls['videoUploadUrl'];
-        final videoFileUrl = urls['videoFileUrl'];
-        if (videoUploadUrl != null && videoFileUrl != null) {
-          final item = UploadQueueItem(
-            filePath: videoPath,
-            title: 'Course intro: $courseTitle',
-            fileSize: await File(videoPath).length(),
-            status: 'pending',
-            uploadType: 'course_intro',
-          );
-          final insert = await UploadQueueRepository.insert(item);
-          final id = insert['id'] as int;
-          await UploadQueueRepository.updateUrls(
-            id: id,
-            uploadUrl: videoUploadUrl,
-            fileUrl: videoFileUrl,
-          );
+        if (await _hasInFlightFile(videoPath, uploadType: 'course_intro')) {
+          ToastService.showError('This intro video is already uploading');
+          return null;
         }
+        final videoFile = File(videoPath);
+        await _queue.add(
+          file: videoFile,
+          title: 'Course intro: $courseTitle',
+          metadata: {
+            'uploadType': 'course_intro',
+            'initEndpoint': Urls.courseAssetsUploadUrl,
+          },
+        );
       }
 
-      _queue = await UploadQueueRepository.getActive();
-      _processNextItem();
       ToastService.showSuccess('Assets queued for upload');
 
-      return {
-        'thumbnailFileUrl': urls['thumbnailFileUrl'],
-        'videoFileUrl': urls['videoFileUrl'],
-      };
+      return {};
     } catch (e) {
       AppLogger.e('queueCourseEditAssets error: $e');
       ToastService.showError('Failed to queue course assets');
@@ -1279,182 +640,54 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     }
   }
 
-  /// Video lesson: queue → fetch presigned URL → start upload.
-  Future<int> addModuleLessonToQueue({
-    required String videoPath,
-    required String lessonTitle,
-    required int moduleId,
-    required int courseId,
-    int? lessonId,
-  }) async {
-    if (!File(videoPath).existsSync()) {
-      AppLogger.w('addModuleLessonToQueue: file not found at $videoPath');
-      ToastService.showError('Video file not found');
-      return 0;
-    }
-
-    if (await _hasInFlightFile(videoPath, uploadType: 'module_lesson')) {
-      AppLogger.w('addModuleLessonToQueue: file already queued at $videoPath');
-      ToastService.showError('This video is already in the upload queue');
-      return 0;
-    }
-
-    final permission = await _ensureNotificationPermission();
-    if (!permission) {
-      ToastService.showError('Notification permission required to upload');
-      return 0;
-    }
-
-    final meta = ModuleLessonMetadata(
-      moduleId: moduleId,
-      courseId: courseId,
-      lessonTitle: lessonTitle,
-      lessonId: lessonId,
-    );
-
-    final metadataJson = jsonEncode(meta.toJson());
-    final videoFile = File(videoPath);
-    final fileSize = await videoFile.length();
-    final duration = await VideoMetadataHelper.getDurationSeconds(videoPath);
-
-    final item = UploadQueueItem(
-      filePath: videoPath,
-      title: lessonTitle,
-      videoDuration: duration,
-      fileSize: fileSize,
-      status: 'pending',
-      uploadType: 'module_lesson',
-      metadata: metadataJson,
-    );
-
-    final insertResult = await UploadQueueRepository.insert(item);
-    final id = insertResult['id'] as int;
-    _queue = await UploadQueueRepository.getActive();
-    notifyListeners();
-
-    final urls = await BackgroundUploadService.fetchPresignedUrl(
-      filePath: videoPath,
-      endpoint: Urls.courseModuleUploadUrl,
-      buildPayload: (name) => {
-        'videoFilename': name,
-        'videoContentType': BackgroundUploadService.inferVideoContentType(name),
-      },
-      extraFields: {'moduleID': moduleId},
-    );
-
-    if (urls == null) {
-      await _cleanupFailedUpload(id, videoPath);
-      ToastService.showError('Failed to get upload URL');
-      return 0;
-    }
-
-    await UploadQueueRepository.updateUrls(
-      id: id,
-      uploadUrl: urls['uploadUrl']!,
-      fileUrl: urls['fileUrl']!,
-    );
-
-    ToastService.showSuccess('Your video is being uploaded');
-    await _processNextItem();
-    return id;
+  Future<void> cancelTask(int queueId) async {
+    await _queue.cancel(queueId);
+    ToastService.showInfo('Upload cancelled');
   }
 
-  /// Resource: queue → fetch presigned URL → start upload.
-  Future<int> addResourceToQueue({
-    required String filePath,
-    required String lessonTitle,
-    required int moduleId,
-    required int courseId,
-    required String contentType,
-    int? lessonId,
-  }) async {
-    if (!File(filePath).existsSync()) {
-      AppLogger.w('addResourceToQueue: file not found at $filePath');
-      ToastService.showError('Resource file not found');
-      return 0;
-    }
+  Future<void> retryFailed(int queueId) async {
+    await _queue.retry(queueId);
+    ToastService.showInfo('Retrying upload');
+  }
 
-    if (await _hasInFlightFile(filePath, uploadType: 'resource')) {
-      AppLogger.w('addResourceToQueue: file already queued at $filePath');
-      ToastService.showError('This resource is already in the upload');
-      return 0;
-    }
+  Future<void> removeTask(int queueId) async {
+    await _queue.remove(queueId);
+  }
 
-    final permission = await _ensureNotificationPermission();
-    if (!permission) {
-      ToastService.showError('Notification permission required to upload');
-      return 0;
-    }
-
-    final meta = ModuleLessonMetadata(
-      moduleId: moduleId,
-      courseId: courseId,
-      lessonTitle: lessonTitle,
-      contentType: contentType,
-      lessonId: lessonId,
+  Future<void> pauseQueue() async {
+    ToastService.showInfo(
+      'Resource management handled by system notifications',
     );
+  }
 
-    final metadataJson = jsonEncode(meta.toJson());
-    final resourceFile = File(filePath);
-    final fileSize = await resourceFile.length();
-
-    final item = UploadQueueItem(
-      filePath: filePath,
-      title: lessonTitle,
-      fileSize: fileSize,
-      status: 'pending',
-      uploadType: 'resource',
-      metadata: metadataJson,
-    );
-
-    final insertResult = await UploadQueueRepository.insert(item);
-    final id = insertResult['id'] as int;
-    _queue = await UploadQueueRepository.getActive();
-    notifyListeners();
-
-    final urls = await BackgroundUploadService.fetchPresignedUrl(
-      filePath: filePath,
-      endpoint: Urls.courseModuleResourceUploadUrl,
-      buildPayload: (name) => {'filename': name, 'contentType': contentType},
-    );
-
-    if (urls == null) {
-      await _cleanupFailedUpload(id, filePath);
-      ToastService.showError('Failed to get upload URL');
-      return 0;
-    }
-
-    await UploadQueueRepository.updateUrls(
-      id: id,
-      uploadUrl: urls['uploadUrl']!,
-      fileUrl: urls['fileUrl']!,
-    );
-
-    ToastService.showSuccess('Your Resource is being uploaded');
-    _processNextItem();
-    return id;
+  Future<void> resumeQueue() async {
+    ToastService.showInfo('Upload assets resumed');
   }
 
   // ──────────────────────────────────────────────
-  //  Fetch presigned URL and start upload (video_post)
+  //  Helpers
   // ──────────────────────────────────────────────
 
-  Future<void> _cleanupFailedUpload(int id, String filePath) async {
-    await UploadQueueRepository.markFailed(id, 'Upload setup failed');
-    await UploadQueueRepository.cleanupFileIfCached(filePath);
-    _queue = await UploadQueueRepository.getActive();
-    notifyListeners();
+  Future<bool> _hasInFlightFile(String filePath, {String? uploadType}) async {
+    final normalized = File(filePath).absolute.path;
+    return _queue.tasks.any((t) {
+      if (File(t.filePath).absolute.path != normalized) return false;
+      if (t.state == UploadState.completed ||
+          t.state == UploadState.failed ||
+          t.state == UploadState.cancelled) {
+        return false;
+      }
+      if (uploadType != null && t.metadata?['uploadType'] != uploadType) {
+        return false;
+      }
+      return true;
+    });
   }
-
-
-
-  // ──────────────────────────────────────────────
-  //  Permission helpers
-  // ──────────────────────────────────────────────
 
   Future<bool> _ensureNotificationPermission() async {
-    if (await UploadNotificationService.hasNotificationPermission())
+    if (await UploadNotificationService.hasNotificationPermission()) {
       return true;
+    }
 
     final first =
         await UploadNotificationService.requestNotificationPermission();
@@ -1487,23 +720,29 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
   }
 
   Future<void> _openNotificationSettings() async {
-    final exec = Platform.resolvedExecutable;
-    final segments = exec.split('/');
-    String? packageName;
-    for (final segment in segments.reversed) {
-      if (segment.contains('.') && !segment.startsWith('~~')) {
-        packageName = segment.split('-').first;
-        break;
+    if (!Platform.isAndroid) return;
+    const url = 'android.settings.APPLICATION_DETAILS_SETTINGS';
+    try {
+      final exec = Platform.resolvedExecutable;
+      final segments = exec.split('/');
+      String? packageName;
+      for (final segment in segments.reversed) {
+        if (segment.contains('.') && !segment.startsWith('~~')) {
+          packageName = segment.split('-').first;
+          break;
+        }
       }
-    }
-    if (packageName != null && packageName.isNotEmpty) {
-      await Process.run('am', [
-        'start',
-        '-a',
-        'android.settings.APPLICATION_DETAILS_SETTINGS',
-        '-d',
-        'package:$packageName',
-      ]);
+      if (packageName != null && packageName.isNotEmpty) {
+        await Process.run('am', [
+          'start',
+          '-a',
+          url,
+          '-d',
+          'package:$packageName',
+        ]);
+      }
+    } catch (e) {
+      AppLogger.e('_openNotificationSettings error: $e');
     }
   }
 
@@ -1534,151 +773,38 @@ class UnifiedUploadQueueProvider extends ChangeNotifier {
     );
   }
 
-  // ──────────────────────────────────────────────
-  //  Queue management
-  // ──────────────────────────────────────────────
-
-  Future<void> pauseQueue() async {
-    ToastService.showInfo(
-      'Resource management handled by system notifications',
-    );
-  }
-
-  Future<void> resumeQueue() async {
-    _processNextItem();
-    ToastService.showInfo('Upload assets resumed');
-  }
-
-  Future<void> cancelTask(int queueId) async {
-    final items = await UploadQueueRepository.getAll();
-    final item = items.where((i) => i.id == queueId).firstOrNull;
-    if (item?.workerId != null && item!.workerId!.isNotEmpty) {
-      await BackgroundUploaderService.cancelUploadByWorkerId(item.workerId!);
-    }
-    await UploadQueueRepository.updateStatus(id: queueId, status: 'cancelled');
-    _queue.removeWhere((item) => item.id == queueId);
-    if (_activeItem?.id == queueId) {
-      _activeItem = null;
-      _activeProgress = 0;
-      _isUploading = false;
-      _isUploadingSince = null;
-      _processNextItem();
-    }
-    notifyListeners();
-    ToastService.showInfo('Upload cancelled');
-  }
-
-  Future<void> removeItem(int queueId) async {
-    final items = await UploadQueueRepository.getAll();
-    final item = items.where((i) => i.id == queueId).firstOrNull;
-    if (item?.workerId != null && item!.workerId!.isNotEmpty) {
-      await BackgroundUploaderService.cancelUploadByWorkerId(item.workerId!);
-    }
-    await UploadQueueRepository.deleteItem(queueId);
-    _queue.removeWhere((item) => item.id == queueId);
-    if (_activeItem?.id == queueId) {
-      _activeItem = null;
-      _activeProgress = 0;
-      _isUploading = false;
-      _isUploadingSince = null;
-    }
-    notifyListeners();
-  }
-
-  Future<void> clearCompleted() async {
-    await UploadQueueRepository.clearCompleted();
-    _queue.removeWhere((item) => item.status == 'completed');
-    notifyListeners();
-  }
-
-  Future<void> retryFailed(int queueId) async {
-    await UploadQueueRepository.incrementRetryCount(queueId);
-    await UploadQueueRepository.updateStatus(
-      id: queueId,
-      status: 'pending',
-      errorMessage: null,
-    );
-    await UploadQueueRepository.updateWorkerId(id: queueId, workerId: '');
-
-    // Refresh queue from DB so the item is guaranteed to be in _queue
-    _queue = await UploadQueueRepository.getActive();
-    final item = _queue.firstWhere(
-      (i) => i.id == queueId,
-      orElse: () =>
-          UploadQueueItem(filePath: '', title: '', status: '', uploadType: ''),
-    );
-    if (item.filePath.isEmpty) {
-      AppLogger.w('retryFailed: queueId=$queueId not found in active queue');
-      notifyListeners();
-      return;
-    }
-    notifyListeners();
-
-    final result = await _retryItem(item, queueId);
-    if (result) {
-      ToastService.showInfo('Retrying upload');
+  String _inferVideoContentType(String filename) {
+    final ext = filename.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'mp4':
+        return 'video/mp4';
+      case 'mov':
+      case 'quicktime':
+        return 'video/quicktime';
+      case 'mkv':
+      case 'x-matroska':
+        return 'video/x-matroska';
+      case 'webm':
+        return 'video/webm';
+      default:
+        return 'video/mp4';
     }
   }
 
-  Future<bool> _retryItem(UploadQueueItem item, int queueId) async {
-    final urls = await _fetchFreshUrls(item);
-    if (urls == null) {
-      ToastService.showError('Failed to upload');
-      return false;
+  String _inferImageContentType(String filename) {
+    final ext = filename.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'avif':
+        return 'image/avif';
+      default:
+        return 'image/jpeg';
     }
-
-    await UploadQueueRepository.updateUrls(
-      id: queueId,
-      uploadUrl: urls['uploadUrl']!,
-      fileUrl: urls['fileUrl']!,
-    );
-
-    _processNextItem();
-    return true;
   }
-
-  /// Legacy handler from simpler upload flow.
-  /// Prefers the callback-based path via [_onNativeTaskStatus].
-  /// Still releases the queue lock if this was the active item.
-  void onNativeUploadCompleted(int id, String fileUrl) {
-    UploadQueueRepository.markCompleted(id);
-    final idx = _queue.indexWhere((item) => item.id == id);
-    if (idx >= 0) {
-      _queue[idx] = _queue[idx].copyWith(status: 'completed', fileUrl: fileUrl);
-      _cleanupCachedFile(_queue[idx].filePath);
-    }
-    if (_activeItem?.id == id) {
-      _activeItem = null;
-      _activeProgress = 0;
-      _isUploading = false;
-      _isUploadingSince = null;
-    }
-    notifyListeners();
-    ToastService.showSuccess('Upload completed');
-  }
-
-  Future<void> _cleanupCachedFile(String filePath) async {
-    await UploadQueueRepository.cleanupFileIfCached(filePath);
-  }
-
-  /// Legacy handler from simpler upload flow.
-  /// Releases the queue lock if this was the active item.
-  void onNativeUploadFailed(int id, String error) {
-    UploadQueueRepository.markFailed(id, error);
-    final idx = _queue.indexWhere((item) => item.id == id);
-    if (idx >= 0) {
-      _queue[idx] = _queue[idx].copyWith(status: 'failed', errorMessage: error);
-    }
-    if (_activeItem?.id == id) {
-      _isUploading = false;
-      _isUploadingSince = null;
-    }
-    notifyListeners();
-  }
-}
-
-class _CallbackDetails {
-  final String url;
-  final Map<String, dynamic> body;
-  const _CallbackDetails({required this.url, required this.body});
 }

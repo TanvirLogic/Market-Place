@@ -1,32 +1,51 @@
-# AI Session Log — Jun 28, 2026
+# Eduverse-Clone — Developer Context
 
-## Issues Reviewed & Fixed
+## Architecture
+- **Framework:** Flutter (SDK ^3.11.1)
+- **State Management:** Provider (ChangeNotifier + Consumer)
+- **HTTP Client:** `package:http` (no Dio)
+- **Routing:** Named routes via `onGenerateRoute` in `app/app_routes.dart`
+- **Theming:** Material 3, light/dark via `ThemeProvider`
+- **Auth:** JWT tokens stored in `flutter_secure_storage`, user in `SharedPreferences`
 
-### Files Modified
-- `lib/features/courses/providers/unified_upload_queue_provider.dart`
-- `lib/features/manage_module/providers/manage_module_provider.dart`
-- `lib/features/manage_module/presentation/screens/manage_module_screen.dart`
-- `lib/features/manage_module/presentation/widgets/manage_module_add_lesson_sheet.dart`
-- `lib/features/manage_module/presentation/widgets/manage_module_list.dart`
-- `lib/features/manage_module/presentation/widgets/module_card.dart`
+## Key Directories
+- `lib/features/` — Feature modules (auth, courses, course_details, manage_module, home, hub, profile, etc.)
+- `lib/global/core/` — Shared services, widgets, config
+- `lib/app/` — App-level wiring (routes, URLs, themes, providers)
 
-### Fixes Applied
+## Upload System (background queue)
+- **Upload Queue Package:** `packages/upload_queue/` — reusable Dart package
+- **Legacy Provider:** `UnifiedUploadQueueProvider` — still in use, being migrated
+- **Engine:** `package:http` — direct S3 PUT (< 15MB) or multipart PUT (>= 15MB) via presigned URLs
+- **No multipart/form-data used** — all backend calls are `application/json` POST, S3 uploads are binary PUT
+- **Unified init endpoint** — same POST returns `{isMultipart: false, uploadUrl, fileUrl}` or `{isMultipart: true, uploadId, parts[], fileUrl}`
+- **Upload types:** `module_lesson`, `resource`, `video_post`, `course`, `course_intro`, `course_thumb`
+- **Endpoint patterns:**
+  - Init/Complete: `/course/module/lesson/upload`, `/course/module/resource/assets/upload`, `/video-post/assets/upload`, `/course/assets/upload`
+  - Callbacks: `/course/module/lesson`, `/course/module/resource`, `/video-post`, `/course`
+- **Avatars/Covers:** Separate non-queued 2-step (presigned URL → PUT → confirm)
 
-| # | Severity | Description |
-|---|----------|-------------|
-| A | Critical | `retryFailed` now clears `workerId` so `claimNextPendingItem` can pick it up |
-| B | Critical | `_openNotificationSettings` now extracts package name from `Platform.resolvedExecutable` instead of using wrong URI |
-| C | Critical | `stopService()` added back in `_onItemTerminal` when queue is empty — stops background service leak |
-| D | Medium | `_pollProgress` now uses `getActive()` instead of `getAll()` — reduces DB query size |
-| E | Medium | `_onNativeTaskProgress` now only writes forward progress (`bytes > item.bytesUploaded`) — prevents stale callbacks from overwriting higher values |
-| F | Medium | `addToQueue` now writes URLs to DB and calls `_processNextItem()` instead of directly calling `_fetchAndStart` — respects FIFO order |
-| G | Medium | Removed unused `onProgress` callback parameter from `onAddLesson` signature |
-| H | Minor | `_showRenameDialog` converted from `.then()` to `async/await` |
-| I | Minor | Added `AppLogger.e()` to silent `catch (_)` blocks in `onTapVideo` and `onTapResource` |
-| J | Minor | Added `if (didPop) return;` guard in `onPopInvokedWithResult` |
-| K | Minor | Removed redundant `filePath == filePath` check in `_checkDedupOrCleanup` |
+## Data Layer
+- SQLite via `sqflite` for upload queue persistence
+- Manual JSON parsing (no freezed/json_serializable)
+- `NetworkCaller` handles GET/POST/PUT/DELETE with auto 401 retry
 
-### Known Issues (Not Fixed)
-- Queue pump retries server callback forever (no max-retry cap) — harmless but could drain battery
-- No file size validation when queuing uploads
-- Navigation-to-video crash while upload is in progress — guarded by try-catch, root cause unknown
+## Key Providers
+| Provider | File |
+|---|---|
+| `UnifiedUploadQueueProvider` | `features/courses/providers/unified_upload_queue_provider.dart` |
+| `ManageModuleProvider` | `features/manage_module/providers/manage_module_provider.dart` |
+| `AuthController` (static) | `features/auth/data/models/auth_controller.dart` |
+| `ThemeProvider` | `app/providers/theme_provider.dart` |
+| `VideoPlayerProvider` | `global/core/providers/video_player_provider.dart` |
+
+## Models
+- `UploadQueueItem`, `PartETag`, `PartPresignedUrl`, `MultipartInitResult`, `ModuleLessonMetadata` — in `features/courses/data/models/upload_task.dart`
+- `PendingLesson`, `CourseModule`, `Lesson`, `Module`, `LessonType` — in `features/manage_module/data/manage_module_models.dart`
+
+## API Base URL
+`http://108.181.195.154:3000/api/v1` (in `app/config/app_config.dart`)
+
+## Running the Project
+- `flutter pub get`
+- `flutter run` (requires Android/iOS device or emulator)

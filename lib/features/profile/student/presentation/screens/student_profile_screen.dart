@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:edtech/app/app_colors.dart';
+import 'package:edtech/app/app_routes.dart' show routeObserver;
 import 'package:edtech/features/profile/student/data/entities/user_profile_entity.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/features/profile/shared/widgets/loading_app_bar.dart';
@@ -28,7 +29,8 @@ class StudentProfileScreen extends StatefulWidget {
   State<StudentProfileScreen> createState() => _StudentProfileScreenState();
 }
 
-class _StudentProfileScreenState extends State<StudentProfileScreen> {
+class _StudentProfileScreenState extends State<StudentProfileScreen>
+    with RouteAware {
   @override
   void initState() {
     super.initState();
@@ -47,7 +49,19 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
+  void didPushNext() {
+    context.read<VideoPlayerProvider>().pause();
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     context.read<VideoPlayerProvider>().dismiss();
     super.dispose();
   }

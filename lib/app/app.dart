@@ -1,4 +1,4 @@
-import 'package:edtech/app/app_routes.dart';
+import 'package:edtech/app/app_routes.dart' show AppRoutes, routeObserver;
 import 'package:edtech/app/app_theme.dart';
 import 'package:edtech/app/providers/theme_provider.dart';
 import 'package:edtech/features/auth/providers/sign_in_provider.dart';
@@ -13,7 +13,6 @@ import 'package:edtech/features/profile/avatar/providers/cover_upload_provider.d
 import 'package:edtech/features/course_details/providers/course_detail_provider.dart';
 import 'package:edtech/features/courses/providers/course_list_provider.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
-import 'package:edtech/features/courses/providers/video_post_provider.dart';
 import 'package:edtech/features/courses/providers/course_feed_provider.dart';
 import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
 import 'package:edtech/features/hub/providers/change_password_provider.dart';
@@ -50,7 +49,6 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CourseListProvider()),
         ChangeNotifierProvider(create: (_) => CourseUploadProvider()),
         ChangeNotifierProvider(create: (_) => ChangePasswordProvider()),
-        ChangeNotifierProvider(create: (_) => VideoPostProvider()),
         ChangeNotifierProvider(create: (_) => UnifiedUploadQueueProvider()),
         ChangeNotifierProvider(create: (_) => CourseFeedProvider()),
         ChangeNotifierProvider(create: (_) => MentorDashboardProvider()),
@@ -67,6 +65,7 @@ class App extends StatelessWidget {
           navigatorKey: App.navigatorKey,
           onGenerateRoute: AppRoutes.onGenerateRoute,
           initialRoute: AppRoutes.splash,
+          navigatorObservers: [routeObserver],
           builder: (context, child) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               final overlay = App.navigatorKey.currentState?.overlay;

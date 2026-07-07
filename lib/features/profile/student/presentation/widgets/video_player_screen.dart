@@ -63,7 +63,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             nextVideoTitle: widget.nextVideoTitle,
           );
         } else {
-          provider.seek(Duration.zero);
           if (!provider.isPlaying) {
             provider.play();
           }

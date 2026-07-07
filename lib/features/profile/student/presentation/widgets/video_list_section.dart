@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:edtech/app/app_routes.dart' show routeObserver;
 import 'package:edtech/global/core/providers/video_player_provider.dart';
 import '../../data/entities/user_profile_entity.dart';
 import 'video_player_screen.dart';
@@ -26,7 +27,8 @@ class VideosHorizontalListView extends StatefulWidget {
       _VideosHorizontalListViewState();
 }
 
-class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
+class _VideosHorizontalListViewState extends State<VideosHorizontalListView>
+    with RouteAware {
   int _activeIndex = -1;
   bool _showControls = true;
 
@@ -39,6 +41,12 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
   void didUpdateWidget(VideosHorizontalListView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.videos != widget.videos) {
@@ -48,7 +56,13 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
   }
 
   @override
+  void didPushNext() {
+    context.read<VideoPlayerProvider>().pause();
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     context.read<VideoPlayerProvider>().dismiss();
     super.dispose();
   }
@@ -128,11 +142,13 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView> {
     if (_activeIndex < 0) return;
 
     final video = widget.videos[_activeIndex];
+    final provider = context.read<VideoPlayerProvider>();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           videoUrl: video.video,
           title: video.title,
+          initialPosition: provider.position,
         ),
       ),
     );
