@@ -14,7 +14,7 @@ import 'package:edtech/features/course_details/providers/course_detail_provider.
 import 'package:edtech/features/courses/providers/course_list_provider.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 import 'package:edtech/features/courses/providers/course_feed_provider.dart';
-import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
+import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 import 'package:edtech/features/hub/providers/change_password_provider.dart';
 import 'package:edtech/features/hub/providers/global_state_provider.dart';
 import 'package:edtech/features/hub/providers/mentor_dashboard_provider.dart';
@@ -49,7 +49,7 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CourseListProvider()),
         ChangeNotifierProvider(create: (_) => CourseUploadProvider()),
         ChangeNotifierProvider(create: (_) => ChangePasswordProvider()),
-        ChangeNotifierProvider(create: (_) => UnifiedUploadQueueProvider()),
+        ChangeNotifierProvider(create: (_) => UploadQueueProvider()),
         ChangeNotifierProvider(create: (_) => CourseFeedProvider()),
         ChangeNotifierProvider(create: (_) => MentorDashboardProvider()),
         ChangeNotifierProvider(create: (_) => GlobalStateProvider()),

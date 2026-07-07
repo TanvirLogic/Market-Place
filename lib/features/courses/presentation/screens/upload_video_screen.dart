@@ -5,7 +5,7 @@ import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
-import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
+import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -82,7 +82,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
     );
 
     try {
-      final provider = context.read<UnifiedUploadQueueProvider>();
+      final provider = context.read<UploadQueueProvider>();
       final success = await provider.addToQueue(
         file,
         _titleController.text.trim(),

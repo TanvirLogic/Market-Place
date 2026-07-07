@@ -10,7 +10,7 @@ import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
 import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
-import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
+import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 
 class ManageModuleEditCourseSheet extends StatefulWidget {
   final int courseId;
@@ -177,7 +177,7 @@ class _ManageModuleEditCourseSheetState
       final video = uploadProvider.videoFile;
 
       if (thumbnail != null || video != null) {
-        final queueProvider = context.read<UnifiedUploadQueueProvider>();
+        final queueProvider = context.read<UploadQueueProvider>();
         final urls = await queueProvider.queueCourseEditAssets(
           thumbnailPath: thumbnail?.path,
           videoPath: video?.path,

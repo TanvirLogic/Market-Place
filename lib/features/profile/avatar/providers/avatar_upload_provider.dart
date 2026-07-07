@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:edtech/app/network/s3_upload_service.dart';
-import 'package:edtech/app/urls.dart';
+import 'package:edtech/features/uploads/data/models/upload_enums.dart';
+import 'package:edtech/features/uploads/presentation/image_upload_helper.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 
 class AvatarUploadProvider extends ChangeNotifier {
@@ -182,17 +182,10 @@ class AvatarUploadProvider extends ChangeNotifier {
   }
 
   Future<void> _uploadFile(XFile file) async {
-    final bytes = await file.readAsBytes();
-    final filename = file.name;
-    final contentType = S3UploadService.inferContentType(filename);
-
-    final result = await S3UploadService.uploadImage(
-      uploadUrlEndpoint: Urls.avatarUploadUrl,
-      confirmUrlEndpoint: Urls.avatarConfirmUrl,
-      filename: filename,
-      bytes: bytes,
-      contentType: contentType,
-      uploadTimeout: uploadTimeout,
+    final result = await ImageUploadHelper().upload(
+      filePath: file.path,
+      type: UploadAssetType.avatar,
+      title: file.name,
       onProgress: (progress) {
         _uploadProgress = progress;
         notifyListeners();

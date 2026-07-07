@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
+import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:upload_queue/upload_queue.dart';
 
 import 'package:edtech/app/urls.dart';
 import 'package:edtech/app/setup_network_caller.dart';
@@ -13,7 +12,7 @@ import 'package:edtech/global/core/services/toast_service.dart';
 
 class ManageModuleProvider extends ChangeNotifier {
   final int courseId;
-  final UnifiedUploadQueueProvider _queueProvider;
+  final UploadQueueProvider _queueProvider;
   int _nextModuleId = 1;
   int _nextLessonId = 1;
   bool _isLoading = true;
@@ -44,7 +43,7 @@ class ManageModuleProvider extends ChangeNotifier {
 
   ManageModuleProvider({
     this.courseId = 0,
-    required UnifiedUploadQueueProvider queueProvider,
+    required UploadQueueProvider queueProvider,
   }) : _queueProvider = queueProvider {
     _fetchCourse();
   }

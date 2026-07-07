@@ -5,20 +5,15 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
-import net.eduverseapp.platform.upload.UploadBridgeHandler
 
 class MainActivity : FlutterActivity() {
     private val videoChannel = "eduverse/video_metadata"
-    private val uploadChannel = "eduverse/upload_engine"
-    private val progressChannel = "eduverse/upload_progress"
-    private var uploadBridgeHandler: UploadBridgeHandler? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Video metadata channel (existing)
+        // Video metadata channel (used by VideoMetadataHelper on the Dart side).
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, videoChannel)
             .setMethodCallHandler { call, result ->
                 if (call.method == "getVideoInfo") {
@@ -50,22 +45,6 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
-
-        // Upload engine channel (WorkManager-based — survives app kill)
-        val handler = UploadBridgeHandler(this)
-        uploadBridgeHandler = handler
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, uploadChannel)
-            .setMethodCallHandler(handler)
-
-        // Upload progress event channel (native -> Dart)
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, progressChannel)
-            .setStreamHandler(handler.progressStreamHandler)
-    }
-
-    override fun onDestroy() {
-        uploadBridgeHandler?.dispose()
-        uploadBridgeHandler = null
-        super.onDestroy()
     }
 
     private fun getFileSize(context: Context, uriString: String): Long {

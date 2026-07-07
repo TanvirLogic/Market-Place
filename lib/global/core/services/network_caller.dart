@@ -47,6 +47,7 @@ class NetworkCaller {
     required String url,
     Map<String, dynamic>? body,
     bool skipUnauthorize = false,
+    Map<String, String>? extraHeaders,
   }) async {
     try {
       Uri uri = Uri.parse(url);
@@ -54,7 +55,7 @@ class NetworkCaller {
       if (body != null) AppLogger.i('Body: ${jsonEncode(body)}');
       http.Response response = await http.post(
         uri,
-        headers: headers ?? {'content-type': 'application/json'},
+        headers: {...(headers ?? {'content-type': 'application/json'}), ...?extraHeaders},
         body: jsonEncode(body),
       );
       return _processResponse(
@@ -63,6 +64,7 @@ class NetworkCaller {
         method: 'POST',
         body: body,
         skipUnauthorize: skipUnauthorize,
+        extraHeaders: extraHeaders,
       );
     } on Exception catch (e) {
       return NetworkResponse(
@@ -77,6 +79,7 @@ class NetworkCaller {
     required String url,
     Map<String, dynamic>? body,
     bool skipUnauthorize = false,
+    Map<String, String>? extraHeaders,
   }) async {
     try {
       Uri uri = Uri.parse(url);
@@ -84,7 +87,7 @@ class NetworkCaller {
       if (body != null) AppLogger.i('Body: ${jsonEncode(body)}');
       http.Response response = await http.put(
         uri,
-        headers: headers ?? {'content-type': 'application/json'},
+        headers: {...(headers ?? {'content-type': 'application/json'}), ...?extraHeaders},
         body: jsonEncode(body),
       );
       return _processResponse(
@@ -93,6 +96,7 @@ class NetworkCaller {
         method: 'PUT',
         body: body,
         skipUnauthorize: skipUnauthorize,
+        extraHeaders: extraHeaders,
       );
     } on Exception catch (e) {
       return NetworkResponse(
@@ -138,6 +142,7 @@ class NetworkCaller {
     required String method,
     Map<String, dynamic>? body,
     bool skipUnauthorize = false,
+    Map<String, String>? extraHeaders,
   }) async {
     final int statusCode = response.statusCode;
     final dynamic decodedBody = _tryDecode(response.body);
@@ -158,7 +163,7 @@ class NetworkCaller {
       if (onRefreshToken != null) {
         final refreshed = await onRefreshToken!();
         if (refreshed) {
-          return _retryWithFreshToken(response, uri, method, body);
+          return _retryWithFreshToken(response, uri, method, body, extraHeaders);
         }
       }
       onUnauthorize();
@@ -184,9 +189,11 @@ class NetworkCaller {
     Uri uri,
     String method,
     Map<String, dynamic>? body,
+    Map<String, String>? extraHeaders,
   ) async {
     final updatedHeaders = <String, String>{
       ...?headers,
+      ...?extraHeaders,
       'Authorization': 'Bearer ${AuthController.accessToken ?? ''}',
     };
 

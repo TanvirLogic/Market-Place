@@ -5,7 +5,7 @@ import 'package:edtech/global/core/constants/images/images.dart';
 import 'package:edtech/app/app_colors.dart';
 import 'package:edtech/global/core/widgets/swipe_action_widget.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
-import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
+import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 class ModuleCard extends StatelessWidget {
   final CourseModule module;
@@ -209,7 +209,7 @@ class _PendingLessonRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    final queueProvider = context.watch<UnifiedUploadQueueProvider>();
+    final queueProvider = context.watch<UploadQueueProvider>();
     final isActiveUpload = queueProvider.activeUploadId == pending.queueId;
     final nativeProgress = queueProvider.activeUploadProgress;
     final dbProgress = pending.uploadProgress;

@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:edtech/app/app_colors.dart';
-import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
+import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 import 'package:edtech/global/core/constants/sizes.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
@@ -95,7 +95,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
     if (!mounted) return;
     setState(() => _isUploading = true);
 
-    final provider = context.read<UnifiedUploadQueueProvider>();
+    final provider = context.read<UploadQueueProvider>();
     final title = _titleCtrl.text.trim();
 
     // Queue intro video through centralized system if selected

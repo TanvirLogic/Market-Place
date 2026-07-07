@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:edtech/features/courses/providers/unified_upload_queue_provider.dart';
+import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 import 'package:edtech/features/manage_module/providers/manage_module_provider.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:edtech/features/manage_module/presentation/widgets/manage_module_header.dart';
@@ -32,7 +32,7 @@ class ManageModuleScreen extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (ctx) => ManageModuleProvider(
         courseId: courseId,
-        queueProvider: ctx.read<UnifiedUploadQueueProvider>(),
+        queueProvider: ctx.read<UploadQueueProvider>(),
       ),
       child: const _ManageModuleBody(),
     );
