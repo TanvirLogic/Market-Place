@@ -77,17 +77,20 @@ class UploadService {
 
   Future<void> _process(UploadJob job) async {
     try {
+      AppLogger.i('UploadService._process ${job.id} starting type=${job.type.wire}');
       await ensureStarted();
       final route = _routes.forJob(job);
 
       // ---- Step 1: init ----
       _setState(job, UploadJobState.uploading);
+      AppLogger.i('UploadService._process ${job.id} init endpoint=${route.initEndpoint} body=${route.initBody}');
       final init = await _api.init(
         endpoint: route.initEndpoint,
         body: route.initBody,
         courseAssetKey: route.courseAssetKey,
       );
       if (init == null) {
+        AppLogger.e('UploadService._process ${job.id} init returned null');
         return _fail(job, 'Failed to initialize upload');
       }
       _applyInit(job, init);
@@ -124,14 +127,18 @@ class UploadService {
       } else {
         // Direct upload: object is already stored at `key` on success; the
         // fileUrl came from init. No S3 complete call needed.
+        AppLogger.i('UploadService._process ${job.id} direct upload starting');
         final result = await _engine.uploadDirect(job);
         if (!result.success) {
+          AppLogger.e('UploadService._process ${job.id} direct upload failed: ${result.error}');
           return _fail(job, result.error ?? 'Direct upload failed');
         }
+        AppLogger.i('UploadService._process ${job.id} direct upload succeeded');
       }
 
       // ---- Step 4: callback ----
       _setState(job, UploadJobState.callback);
+      AppLogger.i('UploadService._process ${job.id} callback endpoint=${route.callbackEndpoint} method=${route.callbackMethod} body=${route.callbackBody(job)}');
       final ok = await _api.callback(
         endpoint: route.callbackEndpoint,
         method: route.callbackMethod,
@@ -139,6 +146,7 @@ class UploadService {
         idempotencyKey: '${job.id}_callback',
       );
       if (!ok) {
+        AppLogger.e('UploadService._process ${job.id} callback failed');
         return _fail(job, 'Server callback failed');
       }
 
@@ -157,10 +165,12 @@ class UploadService {
 
     if (init.isMultipart) {
       job.parts.clear();
-      final total = init.parts.length;
-      final partSize = total > 0
-          ? (job.fileSize + total - 1) ~/ total
-          : job.fileSize;
+      const partSize = 5 * 1024 * 1024;
+      final serverTotal = init.parts.length;
+      final needed = serverTotal > 0
+          ? (job.fileSize + partSize - 1) ~/ partSize
+          : 0;
+      final total = needed < serverTotal ? needed : serverTotal;
       for (var i = 0; i < total; i++) {
         final p = init.parts[i];
         final start = i * partSize;

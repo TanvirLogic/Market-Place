@@ -118,11 +118,13 @@ class UploadQueueProvider extends ChangeNotifier {
   // ── Public queue methods (same signatures as before) ──────────────────
 
   Future<bool> addToQueue(File file, String title) async {
+    if (_adding) return false;
+    if (_hasInFlightFile(file.path)) {
+      ToastService.showError('This file is already being uploaded');
+      return false;
+    }
+    _adding = true;
     try {
-      if (_hasInFlightFile(file.path)) {
-        ToastService.showError('This file is already being uploaded');
-        return false;
-      }
       if (!await _ensureNotificationPermission()) {
         ToastService.showError('Notification permission required to upload');
         return false;
@@ -142,6 +144,8 @@ class UploadQueueProvider extends ChangeNotifier {
       AppLogger.e('addToQueue error - $e');
       ToastService.showError('Failed to queue video. Please try again.');
       return false;
+    } finally {
+      _adding = false;
     }
   }
 
@@ -161,12 +165,12 @@ class UploadQueueProvider extends ChangeNotifier {
       ToastService.showError('This video is already in the upload queue');
       return 0;
     }
-    if (!await _ensureNotificationPermission()) {
-      ToastService.showError('Notification permission required to upload');
-      return 0;
-    }
     _adding = true;
     try {
+      if (!await _ensureNotificationPermission()) {
+        ToastService.showError('Notification permission required to upload');
+        return 0;
+      }
       final fileSize = await File(videoPath).length();
       final duration = await VideoMetadataHelper.getDurationSeconds(videoPath);
       final job = await _enqueue(
@@ -211,12 +215,12 @@ class UploadQueueProvider extends ChangeNotifier {
       ToastService.showError('This resource is already in the upload');
       return 0;
     }
-    if (!await _ensureNotificationPermission()) {
-      ToastService.showError('Notification permission required to upload');
-      return 0;
-    }
     _adding = true;
     try {
+      if (!await _ensureNotificationPermission()) {
+        ToastService.showError('Notification permission required to upload');
+        return 0;
+      }
       final fileSize = await File(filePath).length();
       final job = await _enqueue(
         filePath: filePath,
@@ -261,12 +265,12 @@ class UploadQueueProvider extends ChangeNotifier {
       ToastService.showError('This thumbnail is already uploading');
       return 0;
     }
-    if (!await _ensureNotificationPermission()) {
-      ToastService.showError('Notification permission required to upload');
-      return 0;
-    }
     _adding = true;
     try {
+      if (!await _ensureNotificationPermission()) {
+        ToastService.showError('Notification permission required to upload');
+        return 0;
+      }
       final meta = CourseUploadMetadata(
         courseTitle: title,
         shortDescription: shortDescription,
@@ -312,15 +316,17 @@ class UploadQueueProvider extends ChangeNotifier {
     required String filePath,
     required String title,
   }) async {
+    if (_adding) return null;
     if (_hasInFlightFile(filePath)) {
       ToastService.showError('This video is already queued');
       return null;
     }
-    if (!await _ensureNotificationPermission()) {
-      ToastService.showError('Notification permission required to upload');
-      return null;
-    }
+    _adding = true;
     try {
+      if (!await _ensureNotificationPermission()) {
+        ToastService.showError('Notification permission required to upload');
+        return null;
+      }
       final fileSize = await File(filePath).length();
       final job = await _enqueue(
         filePath: filePath,
@@ -335,6 +341,8 @@ class UploadQueueProvider extends ChangeNotifier {
       AppLogger.e('addCourseIntroVideo error: $e');
       ToastService.showError('Failed to queue intro video');
       return null;
+    } finally {
+      _adding = false;
     }
   }
 
@@ -345,11 +353,13 @@ class UploadQueueProvider extends ChangeNotifier {
     required String courseTitle,
   }) async {
     if (thumbnailPath == null && videoPath == null) return {};
-    if (!await _ensureNotificationPermission()) {
-      ToastService.showError('Notification permission required to upload');
-      return null;
-    }
+    if (_adding) return null;
+    _adding = true;
     try {
+      if (!await _ensureNotificationPermission()) {
+        ToastService.showError('Notification permission required to upload');
+        return null;
+      }
       if (thumbnailPath != null) {
         if (_hasInFlightFile(thumbnailPath, type: UploadAssetType.courseThumb)) {
           ToastService.showError('This thumbnail is already uploading');
@@ -384,6 +394,8 @@ class UploadQueueProvider extends ChangeNotifier {
       AppLogger.e('queueCourseEditAssets error: $e');
       ToastService.showError('Failed to queue course assets');
       return null;
+    } finally {
+      _adding = false;
     }
   }
 

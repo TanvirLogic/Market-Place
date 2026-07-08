@@ -8,6 +8,7 @@ import 'package:edtech/global/core/services/toast_service.dart';
 class AvatarUploadProvider extends ChangeNotifier {
   final ImagePicker _imagePicker;
   final Duration uploadTimeout;
+  final ImageUploadHelper _uploadHelper;
 
   static const double _cropMaxDimension = 1024;
   static const int _cropQuality = 95;
@@ -15,7 +16,9 @@ class AvatarUploadProvider extends ChangeNotifier {
   AvatarUploadProvider({
     ImagePicker? imagePicker,
     this.uploadTimeout = const Duration(seconds: 120),
-  }) : _imagePicker = imagePicker ?? ImagePicker();
+    ImageUploadHelper? uploadHelper,
+  })  : _imagePicker = imagePicker ?? ImagePicker(),
+        _uploadHelper = uploadHelper ?? ImageUploadHelper();
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -182,7 +185,7 @@ class AvatarUploadProvider extends ChangeNotifier {
   }
 
   Future<void> _uploadFile(XFile file) async {
-    final result = await ImageUploadHelper().upload(
+    final result = await _uploadHelper.upload(
       filePath: file.path,
       type: UploadAssetType.avatar,
       title: file.name,
@@ -205,5 +208,11 @@ class AvatarUploadProvider extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _uploadHelper.dispose();
+    super.dispose();
   }
 }
