@@ -53,6 +53,10 @@ class PendingLesson {
   String? fileUrl;
   final int moduleId;
 
+  /// Timestamp (ms since epoch) when the backing job vanished from the queue.
+  /// Used to show "failed" status for a brief period before auto-removing.
+  int? vanishedAt;
+
   PendingLesson({
     required this.queueId,
     required this.lessonId,
@@ -63,5 +67,6 @@ class PendingLesson {
     this.uploadStatus = 'pending',
     this.fileUrl,
     required this.moduleId,
+    this.vanishedAt,
   });
 }

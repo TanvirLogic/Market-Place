@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:edtech/app/app.dart';
-import 'package:edtech/features/courses/data/models/upload_task.dart'
-    show CourseUploadMetadata;
 import 'package:edtech/features/courses/data/helpers/video_metadata_helper.dart';
 import 'package:edtech/global/core/services/logger_service.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
@@ -70,7 +68,7 @@ class UploadTaskView {
 class UploadQueueProvider extends ChangeNotifier {
   UploadQueueProvider({UploadService? service})
       : _service = service ?? UploadService() {
-    _sub = _service.updates.listen((_) => notifyListeners());
+    _sub = _service.updates.listen(_onJobUpdate);
     _service.ensureStarted();
   }
 
@@ -83,6 +81,25 @@ class UploadQueueProvider extends ChangeNotifier {
   int _nextIntId = 1;
 
   bool _adding = false;
+
+  void _onJobUpdate(UploadJob job) {
+    // Register unknown job IDs (e.g., from recovery) off the stream.
+    if (!_jobToInt.containsKey(job.id)) {
+      final intId = _nextIntId++;
+      _intToJob[intId] = job.id;
+      _jobToInt[job.id] = intId;
+    }
+    // Note: upload notifications are shown natively by background_downloader
+    // (configured in BackgroundUploadEngine) so the progress notification
+    // survives app kill. We intentionally do NOT show Dart-side notifications
+    // here — doing so produced duplicate entries in the system tray.
+    // Service auto-removes failed jobs from everywhere; keep our mappings in sync.
+    if (job.state == UploadJobState.failed) {
+      final intId = _jobToInt.remove(job.id);
+      if (intId != null) _intToJob.remove(intId);
+    }
+    notifyListeners();
+  }
 
   // ── Compatibility getters ─────────────────────────────────────────────
 
@@ -171,10 +188,17 @@ class UploadQueueProvider extends ChangeNotifier {
         ToastService.showError('Notification permission required to upload');
         return 0;
       }
-      final fileSize = await File(videoPath).length();
-      final duration = await VideoMetadataHelper.getDurationSeconds(videoPath);
+      // Copy file to app-local temp to ensure native service can access it,
+      // even when the original path is a content:// URI from image_picker.
+      final localPath = await _copyToAppCache(videoPath);
+      if (localPath == null) {
+        ToastService.showError('Failed to access video file');
+        return 0;
+      }
+      final fileSize = await File(localPath).length();
+      final duration = await VideoMetadataHelper.getDurationSeconds(localPath);
       final job = await _enqueue(
-        filePath: videoPath,
+        filePath: localPath,
         type: UploadAssetType.moduleLesson,
         title: lessonTitle,
         fileSize: fileSize,
@@ -185,6 +209,7 @@ class UploadQueueProvider extends ChangeNotifier {
           'lessonTitle': lessonTitle,
           'videoDuration': duration,
           'fileSize': fileSize,
+          'originalPath': videoPath,
         },
       );
       ToastService.showSuccess('Your video is being uploaded');
@@ -221,9 +246,14 @@ class UploadQueueProvider extends ChangeNotifier {
         ToastService.showError('Notification permission required to upload');
         return 0;
       }
-      final fileSize = await File(filePath).length();
+      final localPath = await _copyToAppCache(filePath);
+      if (localPath == null) {
+        ToastService.showError('Failed to access resource file');
+        return 0;
+      }
+      final fileSize = await File(localPath).length();
       final job = await _enqueue(
-        filePath: filePath,
+        filePath: localPath,
         type: UploadAssetType.resource,
         title: lessonTitle,
         fileSize: fileSize,
@@ -234,6 +264,7 @@ class UploadQueueProvider extends ChangeNotifier {
           'lessonTitle': lessonTitle,
           'contentType': contentType,
           'fileSize': fileSize,
+          'originalPath': filePath,
         },
       );
       ToastService.showSuccess('Your Resource is being uploaded');
@@ -247,106 +278,10 @@ class UploadQueueProvider extends ChangeNotifier {
     }
   }
 
-  Future<int> addCourseToQueue({
-    required String thumbnailPath,
-    String? videoPath,
-    required String title,
-    required String shortDescription,
-    required String description,
-    required String requirements,
-    required String language,
-    required String level,
-    required String type,
-    required double price,
-    String? introVideoUrl,
-  }) async {
-    if (_adding) return 0;
-    if (_hasInFlightFile(thumbnailPath, type: UploadAssetType.course)) {
-      ToastService.showError('This thumbnail is already uploading');
-      return 0;
-    }
-    _adding = true;
-    try {
-      if (!await _ensureNotificationPermission()) {
-        ToastService.showError('Notification permission required to upload');
-        return 0;
-      }
-      final meta = CourseUploadMetadata(
-        courseTitle: title,
-        shortDescription: shortDescription,
-        description: description,
-        requirements: requirements,
-        language: language,
-        level: level,
-        type: type,
-        price: price,
-        videoPath: introVideoUrl != null ? null : videoPath,
-      );
-      final thumbSize = await File(thumbnailPath).length();
-      final job = await _enqueue(
-        filePath: thumbnailPath,
-        type: UploadAssetType.course,
-        title: 'Course: $title',
-        fileSize: thumbSize,
-        metadata: {...meta.toJson(), 'fileSize': thumbSize},
-      );
-
-      if (introVideoUrl == null && videoPath != null) {
-        final vSize = await File(videoPath).length();
-        await _enqueue(
-          filePath: videoPath,
-          type: UploadAssetType.courseIntro,
-          title: 'Course intro video: $title',
-          fileSize: vSize,
-          metadata: {'videoPath': videoPath, 'fileSize': vSize},
-        );
-      }
-      ToastService.showSuccess('Course upload queued');
-      return _jobToInt[job.id]!;
-    } catch (e) {
-      AppLogger.e('addCourseToQueue error: $e');
-      ToastService.showError('Failed to queue course');
-      return 0;
-    } finally {
-      _adding = false;
-    }
-  }
-
-  Future<String?> addCourseIntroVideo({
-    required String filePath,
-    required String title,
-  }) async {
-    if (_adding) return null;
-    if (_hasInFlightFile(filePath)) {
-      ToastService.showError('This video is already queued');
-      return null;
-    }
-    _adding = true;
-    try {
-      if (!await _ensureNotificationPermission()) {
-        ToastService.showError('Notification permission required to upload');
-        return null;
-      }
-      final fileSize = await File(filePath).length();
-      final job = await _enqueue(
-        filePath: filePath,
-        type: UploadAssetType.courseIntro,
-        title: title,
-        fileSize: fileSize,
-        metadata: {'fileSize': fileSize},
-      );
-      ToastService.showSuccess('Intro video queued');
-      return job.fileUrl;
-    } catch (e) {
-      AppLogger.e('addCourseIntroVideo error: $e');
-      ToastService.showError('Failed to queue intro video');
-      return null;
-    } finally {
-      _adding = false;
-    }
-  }
-
-  Future<Map<String, String?>?> queueCourseEditAssets({
+  /// Upload new thumbnail/video for an existing course and return their CDN
+  /// URLs. Awaits the full upload (init → transfer → complete) so the caller
+  /// can include the new URLs in the PUT /course body.
+  Future<Map<String, String?>?> updateCourseAssets({
     String? thumbnailPath,
     String? videoPath,
     required int courseId,
@@ -360,39 +295,33 @@ class UploadQueueProvider extends ChangeNotifier {
         ToastService.showError('Notification permission required to upload');
         return null;
       }
-      if (thumbnailPath != null) {
-        if (_hasInFlightFile(thumbnailPath, type: UploadAssetType.courseThumb)) {
-          ToastService.showError('This thumbnail is already uploading');
-          return null;
-        }
-        final size = await File(thumbnailPath).length();
-        await _enqueue(
-          filePath: thumbnailPath,
-          type: UploadAssetType.courseThumb,
-          title: 'Course thumbnail: $courseTitle',
-          fileSize: size,
-          metadata: {'courseId': courseId},
-        );
+      final thumbSize = thumbnailPath != null
+          ? await File(thumbnailPath).length()
+          : null;
+      final videoSize = videoPath != null
+          ? await File(videoPath).length()
+          : null;
+
+      final intId = _nextIntId++;
+      final jobId = 'edit_course_${DateTime.now().millisecondsSinceEpoch}_$intId';
+
+      final urls = await _service.uploadCourseAssets(
+        id: jobId,
+        thumbnailPath: thumbnailPath,
+        videoPath: videoPath,
+        thumbnailFileSize: thumbSize,
+        videoFileSize: videoSize,
+      );
+
+      if (urls == null) {
+        ToastService.showError('Failed to upload course assets');
+        return null;
       }
-      if (videoPath != null) {
-        if (_hasInFlightFile(videoPath, type: UploadAssetType.courseIntro)) {
-          ToastService.showError('This intro video is already uploading');
-          return null;
-        }
-        final size = await File(videoPath).length();
-        await _enqueue(
-          filePath: videoPath,
-          type: UploadAssetType.courseIntro,
-          title: 'Course intro: $courseTitle',
-          fileSize: size,
-          metadata: {'courseId': courseId},
-        );
-      }
-      ToastService.showSuccess('Assets queued for upload');
-      return {};
+
+      return urls;
     } catch (e) {
-      AppLogger.e('queueCourseEditAssets error: $e');
-      ToastService.showError('Failed to queue course assets');
+      AppLogger.e('updateCourseAssets error: $e');
+      ToastService.showError('Failed to upload course assets');
       return null;
     } finally {
       _adding = false;
@@ -424,6 +353,75 @@ class UploadQueueProvider extends ChangeNotifier {
       }
     }
     return _service.job(job.id)?.fileUrl;
+  }
+
+  /// Combined course creation — single init, upload both thumb + optional
+  /// video, then POST to `/course` with all data. Returns the queue id (> 0)
+  /// on success, or 0 on failure.
+  Future<int> createCourse({
+    required String thumbnailPath,
+    String? videoPath,
+    required String title,
+    required String shortDescription,
+    required String description,
+    required String requirements,
+    required String language,
+    required String level,
+    required String type,
+    required double price,
+  }) async {
+    if (_adding) return 0;
+    if (!File(thumbnailPath).existsSync()) {
+      ToastService.showError('Thumbnail file not found');
+      return 0;
+    }
+    _adding = true;
+    try {
+      if (!await _ensureNotificationPermission()) {
+        ToastService.showError('Notification permission required to upload');
+        return 0;
+      }
+      final intId = _nextIntId++;
+      final jobId = 'course_${DateTime.now().millisecondsSinceEpoch}_$intId';
+      final thumbSize = await File(thumbnailPath).length();
+      final videoSize = videoPath != null
+          ? await File(videoPath).length()
+          : null;
+
+      final job = await _service.createCourse(
+        id: jobId,
+        thumbnailPath: thumbnailPath,
+        videoPath: videoPath,
+        thumbnailFileSize: thumbSize,
+        videoFileSize: videoSize,
+        title: title,
+        shortDescription: shortDescription,
+        description: description,
+        requirements: requirements,
+        language: language,
+        level: level,
+        type: type,
+        price: price,
+      );
+
+      // Register both thumb and video sub-job ids for notification tracking.
+      _intToJob[intId] = job.id;
+      _jobToInt[job.id] = intId;
+
+      if (job.state == UploadJobState.completed) {
+        ToastService.showSuccess('Course created successfully!');
+        return intId;
+      }
+      AppLogger.e('createCourse failed: ${job.error}');
+      ToastService.showError(job.error ?? 'Failed to create course');
+      return 0;
+    } catch (e) {
+      AppLogger.e('createCourse error: $e');
+      ToastService.showError('Failed to create course');
+      return 0;
+    } finally {
+      _adding = false;
+    }
   }
 
   Future<void> cancelTask(int queueId) async {
@@ -492,7 +490,13 @@ class UploadQueueProvider extends ChangeNotifier {
   bool _hasInFlightFile(String filePath, {UploadAssetType? type}) {
     final normalized = File(filePath).absolute.path;
     return _service.jobs.any((j) {
-      if (File(j.filePath).absolute.path != normalized) return false;
+      // Check both the job's current filePath and the original path from
+      // metadata (in case the file was copied to app cache).
+      final jobPath = File(j.filePath).absolute.path;
+      final originalPath = j.metadata['originalPath'] as String?;
+      final jobOriginalPath = originalPath != null ? File(originalPath).absolute.path : null;
+      final matches = jobPath == normalized || (jobOriginalPath != null && jobOriginalPath == normalized);
+      if (!matches) return false;
       if (UploadState.from(j.state) == UploadState.completed ||
           UploadState.from(j.state) == UploadState.failed ||
           UploadState.from(j.state) == UploadState.cancelled) {
@@ -501,6 +505,36 @@ class UploadQueueProvider extends ChangeNotifier {
       if (type != null && j.type != type) return false;
       return true;
     });
+  }
+
+  /// Copy [sourcePath] to the app's cache directory and return the local path.
+  /// On Android this ensures the native foreground service can access the file
+  /// even when the original path is a content:// URI. Returns null on failure.
+  Future<String?> _copyToAppCache(String sourcePath) async {
+    try {
+      final source = File(sourcePath);
+      if (!await source.exists()) return null;
+      // Use a stable name based on the original path so the same file isn't
+      // copied repeatedly on recovery.
+      final hash = sourcePath.hashCode.toString();
+      final ext = sourcePath.contains('.')
+          ? '.${sourcePath.split('.').last}'
+          : '.mp4';
+      final dir = Directory.systemTemp;
+      final target = File('${dir.path}/eduverse_upload_$hash$ext');
+      if (await target.exists()) {
+        // Already cached — verify it's still valid.
+        if (await target.length() == await source.length()) {
+          return target.path;
+        }
+        await target.delete();
+      }
+      await source.copy(target.path);
+      return target.path;
+    } catch (e) {
+      AppLogger.e('_copyToAppCache error: $e');
+      return null;
+    }
   }
 
   Future<bool> _ensureNotificationPermission() async {

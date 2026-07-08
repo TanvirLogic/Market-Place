@@ -1,31 +1,54 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:background_downloader/background_downloader.dart';
 
 import '../data/models/upload_job.dart';
 import 'upload_task_factory.dart';
 
-/// Outcome of a single task (direct upload or one multipart part).
+/// Outcome of a single task (S3 byte transfer or API call).
 class PartResult {
-  final int? partNumber; // null for a direct upload
+  final int? partNumber; // null for direct upload / API task
   final bool success;
   final String? eTag;
   final int? statusCode;
   final bool urlExpired;
   final String? error;
 
+  /// Set for the S3 complete API response; null otherwise.
+  final String? fileUrl;
+
+  /// Raw response body from API tasks.
+  final String? responseBody;
+
   const PartResult({
-    required this.partNumber,
+    this.partNumber,
     required this.success,
     this.eTag,
     this.statusCode,
     this.urlExpired = false,
     this.error,
+    this.fileUrl,
+    this.responseBody,
   });
 }
 
 /// Aggregated progress for a job (0.0 – 1.0).
 typedef JobProgress = void Function(String jobId, double progress);
+
+/// Called when any tracked task reaches a final state (complete/failed).
+/// Fires even when no [PartResult] completer was registered, which is critical
+/// for restart recovery where [BackgroundUploadEngine._pending] is empty.
+typedef TaskFinal = void Function(
+  String jobId,
+  bool success,
+  String? eTag,
+  bool urlExpired,
+  String? fileUrl,
+  bool isApi,
+  String? responseBody,
+  int? statusCode,
+);
 
 /// Wraps `background_downloader` for S3 uploads. Responsible only for the byte
 /// transfer (step 2): enqueuing binary PUTs (direct or per-part with Range),
@@ -61,6 +84,10 @@ class BackgroundUploadEngine {
   /// Optional aggregate progress callback per job.
   JobProgress? onJobProgress;
 
+  /// Called when ANY tracked task reaches a final state, even without a
+  /// registered [PartResult] completer. Used for restart recovery.
+  TaskFinal? onTaskFinal;
+
   /// Live progress fraction per task, used to aggregate a job's progress.
   final Map<String, double> _taskProgress = {};
 
@@ -85,15 +112,6 @@ class BackgroundUploadEngine {
       ));
     });
 
-    // Show OS progress notifications for uploads (survives app kill). Applies
-    // to all upload tasks; per-job grouping is handled by the Task.group.
-    _fd.configureNotification(
-      running: const TaskNotification('Uploading', '{filename}  {progress}'),
-      complete: const TaskNotification('Upload complete', '{filename}'),
-      error: const TaskNotification('Upload failed', '{filename}'),
-      progressBar: true,
-    );
-
     // Activate DB tracking + resume background events + reschedule killed tasks.
     await _fd.start(
       doTrackTasks: true,
@@ -101,10 +119,38 @@ class BackgroundUploadEngine {
     );
   }
 
+  /// Configure the OS notification for a byte-transfer [task]. On Android this
+  /// is what promotes the upload to a foreground service, so the transfer keeps
+  /// running after the app is backgrounded or killed. It is the SINGLE source
+  /// of upload notifications (the Dart-side notification service is not used for
+  /// uploads, to avoid duplicate notifications).
+  ///
+  /// [groupId], when set, collapses all of a job's multipart parts into ONE
+  /// notification. Direct (single-PUT) uploads pass null so the notification can
+  /// show a smooth percentage via `{progress}`.
+  ///
+  /// The tiny complete/callback API calls (DataTasks) are intentionally left
+  /// without a notification config so they stay silent.
+  void _configureTransferNotification(Task task, {String? groupId}) {
+    _fd.configureNotificationForTask(
+      task,
+      running: TaskNotification(
+        '{displayName}',
+        groupId == null ? 'Uploading {progress}' : 'Uploading…',
+      ),
+      complete: const TaskNotification('{displayName}', 'Uploaded successfully'),
+      error: const TaskNotification('{displayName}', 'Upload failed — tap to retry'),
+      progressBar: true,
+      groupNotificationId: groupId ?? '',
+    );
+  }
+
   /// Enqueue a direct single-PUT upload and return a future for its result.
   Future<PartResult> uploadDirect(UploadJob job) async {
     await ensureStarted();
     final task = await _factory.directTask(job);
+    // Single PUT → per-task notification with a smooth percentage.
+    _configureTransferNotification(task);
     return _enqueueAndAwait(task);
   }
 
@@ -112,6 +158,8 @@ class BackgroundUploadEngine {
   Future<PartResult> uploadPart(UploadJob job, UploadPart part) async {
     await ensureStarted();
     final task = await _factory.partTask(job, part);
+    // Multipart → group all parts of this job under ONE notification.
+    _configureTransferNotification(task, groupId: 'upload_${job.id}');
     return _enqueueAndAwait(task);
   }
 
@@ -126,7 +174,14 @@ class BackgroundUploadEngine {
     return results;
   }
 
-  Future<PartResult> _enqueueAndAwait(UploadTask task) {
+  /// Enqueue an API call task (complete or callback step) that runs
+  /// natively via background_downloader. Awaits its result.
+  Future<PartResult> enqueueApiCall(Task task) async {
+    await ensureStarted();
+    return _enqueueAndAwait(task);
+  }
+
+  Future<PartResult> _enqueueAndAwait(Task task) {
     final completer = Completer<PartResult>();
     _pending[task.taskId] = completer;
     _taskProgress[task.taskId] = 0.0;
@@ -136,7 +191,7 @@ class BackgroundUploadEngine {
 
   void _onUpdate(TaskUpdate update) {
     final taskId = update.task.taskId;
-    // Only handle our own upload tasks.
+    // Only handle our own tasks (both transfer and API).
     if (!update.task.group.startsWith(UploadTaskFactory.groupPrefix)) return;
 
     switch (update) {
@@ -148,15 +203,55 @@ class BackgroundUploadEngine {
       case TaskStatusUpdate():
         if (!update.status.isFinalState) return;
         final completer = _pending.remove(taskId);
-        if (completer == null || completer.isCompleted) return;
-        completer.complete(_resultFrom(update));
+        if (completer != null && !completer.isCompleted) {
+          completer.complete(_resultFrom(update));
+        }
+        // Always fire onTaskFinal for recovery, even without a completer.
+        final jobId = UploadTaskFactory.jobIdOf(taskId);
+        final result = _resultFrom(update);
+        final isApi = update.task is DataTask;
+        onTaskFinal?.call(
+          jobId,
+          result.success,
+          result.eTag,
+          result.urlExpired,
+          result.fileUrl,
+          isApi,
+          update.responseBody,
+          result.statusCode,
+        );
     }
   }
 
   PartResult _resultFrom(TaskStatusUpdate update) {
     final taskId = update.task.taskId;
-    final partNumber = UploadTaskFactory.partNumberOf(taskId);
     final code = update.responseStatusCode;
+
+    // API call task (complete or callback) routed through DataTask.
+    if (update.task is DataTask) {
+      if (update.status == TaskStatus.complete) {
+        _taskProgress[taskId] = 1.0;
+        _emitJobProgress(UploadTaskFactory.jobIdOf(taskId));
+        return PartResult(
+          success: true,
+          statusCode: code,
+          responseBody: update.responseBody,
+          // For S3 complete API: extract fileUrl from response JSON.
+          fileUrl: _fileUrlFromResponse(update.responseBody),
+        );
+      }
+      final is401 = code == 401;
+      return PartResult(
+        success: false,
+        statusCode: code,
+        urlExpired: is401,
+        error: update.exception?.description ??
+            'API ${update.status.name} (HTTP ${code ?? '—'})',
+      );
+    }
+
+    // S3 transfer task (UploadTask – direct PUT or multipart part).
+    final partNumber = UploadTaskFactory.partNumberOf(taskId);
 
     if (update.status == TaskStatus.complete) {
       final etag = _readETag(update.responseHeaders);
@@ -189,6 +284,22 @@ class BackgroundUploadEngine {
     return headers['etag'] ?? headers['ETag'] ?? headers['Etag'];
   }
 
+  /// Parse the S3 complete API response JSON to extract the final file URL.
+  /// Expected shape: `{"data": {"fileUrl": "https://..."}}` or `{"fileUrl": "https://..."}`.
+  String? _fileUrlFromResponse(String? body) {
+    if (body == null || body.isEmpty) return null;
+    try {
+      final json = jsonDecode(body);
+      if (json is Map == false) return null;
+      // Option A: { data: { fileUrl: '...' } }
+      final data = json['data'];
+      if (data is Map && data['fileUrl'] is String) return data['fileUrl'] as String;
+      // Option B: { fileUrl: '...' }
+      if (json['fileUrl'] is String) return json['fileUrl'] as String;
+    } catch (_) {}
+    return null;
+  }
+
   void _emitJobProgress(String jobId) {
     final cb = onJobProgress;
     if (cb == null) return;
@@ -217,6 +328,22 @@ class BackgroundUploadEngine {
           error: 'Cancelled',
         ));
       }
+    }
+  }
+
+  /// Cancel all tasks in [group] without resolving awaiting completers.
+  /// Used for cleanup after a job reaches a terminal state.
+  Future<void> cancelGroup(String group) async {
+    await _fd.cancelAll(group: group);
+  }
+
+  /// Remove all progress entries for [jobId] to prevent memory leaks.
+  Future<void> clearProgress(String jobId) async {
+    final ids = _taskProgress.keys
+        .where((k) => UploadTaskFactory.jobIdOf(k) == jobId)
+        .toList();
+    for (final id in ids) {
+      _taskProgress.remove(id);
     }
   }
 

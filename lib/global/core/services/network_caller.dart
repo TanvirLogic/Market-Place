@@ -55,7 +55,10 @@ class NetworkCaller {
       if (body != null) AppLogger.i('Body: ${jsonEncode(body)}');
       http.Response response = await http.post(
         uri,
-        headers: {...(headers ?? {'content-type': 'application/json'}), ...?extraHeaders},
+        headers: {
+          ...(headers ?? {'content-type': 'application/json'}),
+          ...?extraHeaders,
+        },
         body: jsonEncode(body),
       );
       return _processResponse(
@@ -87,7 +90,10 @@ class NetworkCaller {
       if (body != null) AppLogger.i('Body: ${jsonEncode(body)}');
       http.Response response = await http.put(
         uri,
-        headers: {...(headers ?? {'content-type': 'application/json'}), ...?extraHeaders},
+        headers: {
+          ...(headers ?? {'content-type': 'application/json'}),
+          ...?extraHeaders,
+        },
         body: jsonEncode(body),
       );
       return _processResponse(
@@ -163,7 +169,13 @@ class NetworkCaller {
       if (onRefreshToken != null) {
         final refreshed = await onRefreshToken!();
         if (refreshed) {
-          return _retryWithFreshToken(response, uri, method, body, extraHeaders);
+          return _retryWithFreshToken(
+            response,
+            uri,
+            method,
+            body,
+            extraHeaders,
+          );
         }
       }
       onUnauthorize();

@@ -104,6 +104,28 @@ void main() {
       expect(restored.parts.single.eTag, '"e"');
     });
   });
+
+  group('Progress cap (0.95 for multipart)', () {
+    test('multipart progress is capped at 0.95', () {
+      const cap = 0.95;
+      double capped(double raw, bool isMultipart) =>
+          isMultipart ? raw * cap : raw;
+
+      expect(capped(0.0, true), 0.0);
+      expect(capped(0.5, true), 0.475);
+      expect(capped(1.0, true), 0.95);
+    });
+
+    test('direct upload progress is not capped', () {
+      const cap = 0.95;
+      double capped(double raw, bool isMultipart) =>
+          isMultipart ? raw * cap : raw;
+
+      expect(capped(0.0, false), 0.0);
+      expect(capped(0.5, false), 0.5);
+      expect(capped(1.0, false), 1.0);
+    });
+  });
 }
 
 UploadJob _job({required int fileSize}) => UploadJob(

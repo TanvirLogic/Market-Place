@@ -178,7 +178,7 @@ class _ManageModuleEditCourseSheetState
 
       if (thumbnail != null || video != null) {
         final queueProvider = context.read<UploadQueueProvider>();
-        final urls = await queueProvider.queueCourseEditAssets(
+        final urls = await queueProvider.updateCourseAssets(
           thumbnailPath: thumbnail?.path,
           videoPath: video?.path,
           courseId: widget.courseId,
@@ -190,8 +190,12 @@ class _ManageModuleEditCourseSheetState
           return;
         }
 
-        body['thumbnailUrl'] = urls['thumbnailFileUrl'] ?? widget.courseThumbnailUrl;
-        body['introVideoUrl'] = urls['videoFileUrl'] ?? widget.courseIntroVideoUrl;
+        if (urls['thumbnailFileUrl'] != null) {
+          body['thumbnailUrl'] = urls['thumbnailFileUrl'];
+        }
+        if (urls['videoFileUrl'] != null) {
+          body['introVideoUrl'] = urls['videoFileUrl'];
+        }
       }
 
       setState(() => _saving = false);

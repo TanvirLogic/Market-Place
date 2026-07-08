@@ -1,6 +1,8 @@
+import 'package:edtech/app/urls.dart';
 import 'package:edtech/app/setup_network_caller.dart';
 import 'package:edtech/global/core/models/network_response.dart';
 
+import '../models/course_init_result.dart';
 import '../models/s3_init_response.dart';
 
 /// Result of a complete-multipart call.
@@ -36,6 +38,21 @@ class S3UploadApi {
       Map<String, dynamic>.from(data),
       courseAssetKey: courseAssetKey,
     );
+  }
+
+  /// Combined init for course creation — sends thumbnail and optional video
+  /// fields in one request and returns both presigned URL sets.
+  Future<CourseInitResult?> initCourseAssets({
+    required Map<String, dynamic> body,
+  }) async {
+    final res = await getNetworkCaller().postRequest(
+      url: Urls.courseAssetsUploadUrl,
+      body: body,
+    );
+    if (!res.isSuccess) return null;
+    final data = res.responseData;
+    if (data is! Map) return null;
+    return CourseInitResult.fromEnvelope(Map<String, dynamic>.from(data));
   }
 
   /// Step 3 — complete a multipart upload. Sends `{key, uploadId, parts}` and

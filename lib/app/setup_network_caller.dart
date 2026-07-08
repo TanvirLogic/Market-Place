@@ -1,6 +1,7 @@
 import 'package:edtech/app/app.dart';
 import 'package:edtech/app/urls.dart';
 import 'package:edtech/features/auth/data/models/auth_controller.dart';
+import 'package:edtech/features/uploads/engine/native_upload_bridge.dart';
 import 'package:edtech/global/core/services/network_caller.dart';
 
 NetworkCaller getNetworkCaller({bool isPublic = false}) {
@@ -55,6 +56,13 @@ Future<bool> _refreshToken() async {
       refreshToken: data['refreshToken']?.toString(),
     );
     await AuthController.saveUserData(newAccessToken, updated);
+    // Keep the native upload pipeline's token mirror in sync so background
+    // uploads (which may run while the app is killed) keep authenticating.
+    await NativeUploadBridge.syncTokens(
+      accessToken: newAccessToken,
+      refreshToken: updated.refreshToken ?? '',
+      refreshUrl: Urls.refreshTokenUrl,
+    );
   }
   return true;
 }

@@ -210,33 +210,59 @@ class _PendingLessonRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     final queueProvider = context.watch<UploadQueueProvider>();
+    // Look up the actual job state from the queue provider by matching queueId.
+    // This gives us live progress (streamed) instead of the stale polled value.
+    final task = queueProvider.tasks.where((t) => t.id == pending.queueId).firstOrNull;
     final isActiveUpload = queueProvider.activeUploadId == pending.queueId;
-    final nativeProgress = queueProvider.activeUploadProgress;
-    final dbProgress = pending.uploadProgress;
-    final progress = isActiveUpload
-        ? nativeProgress >= dbProgress ? nativeProgress : dbProgress
-        : dbProgress;
+    final jobProgress = task?.progress ?? pending.uploadProgress;
+    final jobState = task?.state;
 
+    // Derive display state from the live job state first, fall back to the
+    // polled pending.uploadStatus for terminal/missing states.
+    final UploadState effectiveState;
+    if (jobState != null) {
+      effectiveState = jobState;
+    } else if (pending.uploadStatus == 'completed') {
+      effectiveState = UploadState.completed;
+    } else if (pending.uploadStatus == 'failed') {
+      effectiveState = UploadState.failed;
+    } else {
+      effectiveState = UploadState.pending;
+    }
+
+    final double progress;
     final bool showDeterminate;
     final String statusText;
-    if (pending.uploadStatus == 'failed') {
-      showDeterminate = false;
-      statusText = 'Upload failed';
-    } else if (isActiveUpload && progress > 0) {
-      showDeterminate = true;
-      statusText = 'Uploading ${(progress * 100).toInt()}%';
-    } else if (isActiveUpload) {
-      showDeterminate = false;
-      statusText = 'Preparing...';
-    } else if (pending.uploadStatus == 'uploading') {
-      showDeterminate = false;
-      statusText = 'Processing...';
-    } else if (pending.uploadStatus == 'completed') {
-      showDeterminate = true;
-      statusText = 'Upload complete';
-    } else {
-      showDeterminate = false;
-      statusText = 'Waiting to upload...';
+    final bool isFailed;
+
+    switch (effectiveState) {
+      case UploadState.completed:
+        progress = 1.0;
+        showDeterminate = true;
+        statusText = 'Upload complete';
+        isFailed = false;
+        break;
+      case UploadState.failed:
+        progress = jobProgress;
+        showDeterminate = false;
+        statusText = 'Upload failed';
+        isFailed = true;
+        break;
+      case UploadState.uploading:
+        progress = jobProgress;
+        showDeterminate = progress > 0;
+        statusText = progress > 0
+            ? 'Uploading ${(progress * 100).toInt()}%'
+            : 'Preparing...';
+        isFailed = false;
+        break;
+      case UploadState.pending:
+      case UploadState.cancelled:
+        progress = jobProgress;
+        showDeterminate = false;
+        statusText = isActiveUpload ? 'Preparing...' : 'Waiting to upload...';
+        isFailed = false;
+        break;
     }
 
     return Material(
@@ -288,7 +314,7 @@ class _PendingLessonRow extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (pending.uploadStatus == 'failed')
+                if (effectiveState == UploadState.failed)
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
                     child: Icon(Icons.error_outline, size: 16, color: Colors.red.shade400),
@@ -329,7 +355,7 @@ class _PendingLessonRow extends StatelessWidget {
                           statusText,
                           style: TextStyle(
                             fontSize: 11,
-                            color: pending.uploadStatus == 'failed'
+                            color: isFailed
                                 ? Colors.red.shade400
                                 : cs.onSurface.withValues(alpha: 0.5),
                           ),

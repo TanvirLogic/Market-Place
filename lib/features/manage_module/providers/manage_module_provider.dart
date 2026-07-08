@@ -46,6 +46,7 @@ class ManageModuleProvider extends ChangeNotifier {
     required UploadQueueProvider queueProvider,
   }) : _queueProvider = queueProvider {
     _fetchCourse();
+    _queueProvider.addListener(_onQueueChanged);
   }
 
   List<CourseModule> get modules => _modules;
@@ -61,9 +62,16 @@ class ManageModuleProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _queueProvider.removeListener(_onQueueChanged);
     _progressTimer?.cancel();
     _progressTimer = null;
     super.dispose();
+  }
+
+  void _onQueueChanged() {
+    if (_modules.isNotEmpty && !_isRestoringPending && !_isLoading) {
+      _restorePendingUploads();
+    }
   }
 
   String get courseTitle => _courseTitle;
@@ -245,12 +253,10 @@ class ManageModuleProvider extends ChangeNotifier {
             : false;
         final alreadyExistsByUrl =
             task.fileUrl != null && task.fileUrl!.isNotEmpty
-                ? _modules[moduleIndex].lessons.any(
-                    (l) =>
-                        l.videoUrl == task.fileUrl ||
-                        l.fileUrl == task.fileUrl,
-                  )
-                : false;
+            ? _modules[moduleIndex].lessons.any(
+                (l) => l.videoUrl == task.fileUrl || l.fileUrl == task.fileUrl,
+              )
+            : false;
         if (alreadyExistsById || alreadyExistsByUrl) {
           AppLogger.i(
             '_restorePendingUploads: skipping "$lessonTitle" — already exists on server',
@@ -612,7 +618,7 @@ class ManageModuleProvider extends ChangeNotifier {
         );
       } catch (e) {
         AppLogger.e('addVideoLesson queue error: $e');
-        ToastService.showError('Failed to queue video lesson');
+        ToastService.showError('Failed to uplaod video lesson');
         return false;
       }
 
@@ -663,12 +669,25 @@ class ManageModuleProvider extends ChangeNotifier {
         final task = allTasks.where((t) => t.id == queueId).firstOrNull;
 
         if (task == null) {
-          AppLogger.w(
-            '_pollProgress: queueId=$queueId vanished from queue — removing from pending',
-          );
-          vanishedIds.add(queueId);
-          updated = true;
+          // Job was removed from service (e.g., after failure). Show failure
+          // status for a few seconds so the user can see it, then auto-remove.
+          if (pending.uploadStatus == 'uploading' ||
+              pending.uploadStatus == 'pending') {
+            pending.uploadStatus = 'failed';
+            pending.uploadProgress = 0.0;
+            pending.vanishedAt = DateTime.now().millisecondsSinceEpoch;
+            updated = true;
+          }
+          if (pending.vanishedAt != null &&
+              DateTime.now().millisecondsSinceEpoch - pending.vanishedAt! >
+                  5000) {
+            vanishedIds.add(queueId);
+            updated = true;
+          }
           continue;
+        } else {
+          // Clear the vanished flag if the task reappeared (e.g. retry).
+          pending.vanishedAt = null;
         }
 
         final stateName = task.state.name;
@@ -707,7 +726,9 @@ class ManageModuleProvider extends ChangeNotifier {
 
       // Trim notified completions set to prevent memory leak
       if (_notifiedCompletions.length > 100) {
-        _notifiedCompletions.removeWhere((k) => !_pendingLessons.containsKey(k));
+        _notifiedCompletions.removeWhere(
+          (k) => !_pendingLessons.containsKey(k),
+        );
       }
 
       if (completedIds.isNotEmpty) {
@@ -737,12 +758,17 @@ class ManageModuleProvider extends ChangeNotifier {
   /// auto-cleans the old row to allow re-upload.
   /// Returns true if the file is safe to queue, false if blocked.
   Future<bool> _checkDedupOrCleanup(String filePath) async {
-    final existing = _queueProvider.tasks.where(
-      (t) =>
-          t.filePath == filePath &&
-          (t.metadata?['uploadType'] == 'module_lesson' ||
-              t.metadata?['uploadType'] == 'resource'),
-    ).firstOrNull;
+    final existing = _queueProvider.tasks
+        .where(
+          (t) {
+            final matchesPath = t.filePath == filePath;
+            final matchesOriginal = t.metadata?['originalPath'] == filePath;
+            return (matchesPath || matchesOriginal) &&
+                (t.metadata?['uploadType'] == 'module_lesson' ||
+                    t.metadata?['uploadType'] == 'resource');
+          },
+        )
+        .firstOrNull;
     if (existing == null) return true;
 
     if (existing.state == UploadState.pending ||
@@ -763,7 +789,7 @@ class ManageModuleProvider extends ChangeNotifier {
     XFile resourceFile,
   ) async {
     if (_isQueuing) {
-      ToastService.showError('Please wait, another file is being queued');
+      ToastService.showError('Your file is being uploaded');
       return false;
     }
 
@@ -787,7 +813,7 @@ class ManageModuleProvider extends ChangeNotifier {
         );
       } catch (e) {
         AppLogger.e('addResourceLesson queue error: $e');
-        ToastService.showError('Failed to queue resource lesson');
+        ToastService.showError('Failed to upload resource lesson');
         return false;
       }
 

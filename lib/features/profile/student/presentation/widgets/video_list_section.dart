@@ -160,7 +160,9 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView>
 
     final provider = context.watch<VideoPlayerProvider>();
 
-    if (_activeIndex >= 0 && !provider.isActive && provider.currentVideoUrl == null) {
+    if (_activeIndex >= 0 &&
+        !provider.isActive &&
+        provider.currentVideoUrl == null) {
       Future.microtask(() {
         if (mounted) setState(() => _activeIndex = -1);
       });
@@ -193,8 +195,9 @@ class _VideosHorizontalListViewState extends State<VideosHorizontalListView>
                     isPlaying: isActive ? provider.isPlaying : false,
                     hasError: isActive ? provider.hasError : false,
                     showControls: isActive ? _showControls : false,
-                    videoController:
-                        isActive && provider.isInitialized ? provider.controller : null,
+                    videoController: isActive && provider.isInitialized
+                        ? provider.controller
+                        : null,
                     onTap: () => _playAtIndex(index),
                     onPlayPause: isActive ? _togglePlayPause : null,
                     onFullScreen: isActive ? _openFullScreen : null,

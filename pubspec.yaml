@@ -38,6 +38,8 @@ dependencies:
   # Its built-in persistent database is the single source of truth for task
   # status, progress and response headers (S3 ETags) — survives app kill.
   background_downloader: ^9.5.5
+  mockito: ^5.7.0
+  plugin_platform_interface: ^2.1.8
 
 
 dev_dependencies:

@@ -30,6 +30,10 @@ class UploadTaskFactory {
   static String partTaskId(String jobId, int partNumber) =>
       '${jobId}__p$partNumber';
 
+  static String completeTaskId(String jobId) => '${jobId}__complete';
+
+  static String callbackTaskId(String jobId) => '${jobId}__callback';
+
   /// Extract the jobId from any of our task ids.
   static String jobIdOf(String taskId) => taskId.split('__').first;
 
@@ -42,6 +46,10 @@ class UploadTaskFactory {
     return null;
   }
 
+  /// Whether [taskId] belongs to an API call (complete or callback).
+  static bool isApiTask(String taskId) =>
+      taskId.endsWith('__complete') || taskId.endsWith('__callback');
+
   /// A binary PUT of the whole file to a single presigned URL (direct, <15 MB).
   Future<UploadTask> directTask(UploadJob job) async {
     final (baseDir, dir, filename) = await Task.split(filePath: job.filePath);
@@ -51,6 +59,7 @@ class UploadTaskFactory {
       httpRequestMethod: 'PUT',
       post: 'binary',
       filename: filename,
+      displayName: job.title,
       baseDirectory: baseDir,
       directory: dir,
       group: groupFor(job.id),
@@ -75,6 +84,7 @@ class UploadTaskFactory {
       httpRequestMethod: 'PUT',
       post: 'binary',
       filename: filename,
+      displayName: job.title,
       baseDirectory: baseDir,
       directory: dir,
       group: groupFor(job.id),
@@ -90,6 +100,65 @@ class UploadTaskFactory {
       }),
     );
   }
+
+  /// A JSON POST via DataTask for the S3 complete step.
+  ///   URL: [url] (route.completeEndpoint)
+  ///   Body: { key, uploadId, parts }
+  ///   Auth: passed via [token] so the task carries its own credential.
+  ///   method: defaults to 'POST', set to 'PUT' for avatar/cover endpoints.
+  DataTask completeTask({
+    required UploadJob job,
+    required String url,
+    required String body,
+    required String token,
+    String method = 'POST',
+  }) {
+    return DataTask(
+      taskId: completeTaskId(job.id),
+      url: url,
+      httpRequestMethod: method,
+      post: body,
+      headers: _authHeaders(token),
+      group: groupFor(job.id),
+      updates: Updates.status,
+      metaData: jsonEncode({
+        ..._baseMeta(job),
+        'step': 'complete',
+      }),
+    );
+  }
+
+  /// A JSON POST/PUT via DataTask for the upload callback.
+  ///   Includes the Idempotency-Key so HTTP 409 is returned on replay.
+  DataTask callbackTask({
+    required UploadJob job,
+    required String url,
+    required String body,
+    required String token,
+    required String method,
+  }) {
+    return DataTask(
+      taskId: callbackTaskId(job.id),
+      url: url,
+      httpRequestMethod: method,
+      post: body,
+      headers: {
+        ..._authHeaders(token),
+        'Idempotency-Key': '${job.id}_callback',
+      },
+      group: groupFor(job.id),
+      updates: Updates.status,
+      metaData: jsonEncode({
+        ..._baseMeta(job),
+        'step': 'callback',
+      }),
+    );
+  }
+
+  Map<String, String> _authHeaders(String token) => {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
 
   Map<String, dynamic> _baseMeta(UploadJob job) => {
         'jobId': job.id,

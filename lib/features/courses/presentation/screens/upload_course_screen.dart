@@ -87,6 +87,10 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
       ToastService.showError('Selected thumbnail no longer available');
       return;
     }
+    if (_videoFile != null && !await File(_videoFile!.path).exists()) {
+      ToastService.showError('Selected video no longer available');
+      return;
+    }
 
     final price = _courseType == 'PAID'
         ? double.tryParse(_priceCtrl.text.trim()) ?? 0
@@ -98,19 +102,7 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
     final provider = context.read<UploadQueueProvider>();
     final title = _titleCtrl.text.trim();
 
-    // Queue intro video through centralized system if selected
-    String? introVideoUrl;
-    if (_videoFile != null) {
-      final videoFile = File(_videoFile!.path);
-      if (await videoFile.exists()) {
-        introVideoUrl = await provider.addCourseIntroVideo(
-          filePath: _videoFile!.path,
-          title: 'Course intro: $title',
-        );
-      }
-    }
-
-    final id = await provider.addCourseToQueue(
+    final id = await provider.createCourse(
       thumbnailPath: _thumbnailFile!.path,
       videoPath: _videoFile?.path,
       title: title,
@@ -121,14 +113,13 @@ class _UploadCourseScreenState extends State<UploadCourseScreen> {
       level: _selectedLevel,
       type: _courseType,
       price: price,
-      introVideoUrl: introVideoUrl,
     );
 
     if (!mounted) return;
     setState(() => _isUploading = false);
 
     if (id > 0) {
-      ToastService.showSuccess('Course queued for upload');
+      ToastService.showSuccess('Course created successfully!');
       Navigator.of(context).pop();
     }
   }
