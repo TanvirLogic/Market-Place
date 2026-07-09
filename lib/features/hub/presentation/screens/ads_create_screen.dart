@@ -5,7 +5,7 @@ import 'package:edtech/global/core/constants/sizes.dart';
 
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
-import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
+import 'package:edtech/global/core/widgets/upload_zone.dart';
 
 enum AdsType { poster, video }
 

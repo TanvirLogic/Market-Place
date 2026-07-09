@@ -8,7 +8,7 @@ import 'package:edtech/global/core/services/logger_service.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/global/core/widgets/app_alert_dialog.dart';
-import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
+import 'package:edtech/global/core/widgets/upload_zone.dart';
 import 'package:edtech/features/courses/providers/course_upload_provider.dart';
 import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
 

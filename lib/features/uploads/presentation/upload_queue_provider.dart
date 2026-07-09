@@ -146,14 +146,23 @@ class UploadQueueProvider extends ChangeNotifier {
         ToastService.showError('Notification permission required to upload');
         return false;
       }
-      final duration = await VideoMetadataHelper.getDurationSeconds(file.path);
-      final fileSize = await VideoMetadataHelper.getFileSizeBytes(file.path);
+      final localPath = await _copyToAppCache(file.path);
+      if (localPath == null) {
+        ToastService.showError('Failed to access video file');
+        return false;
+      }
+      final duration = await VideoMetadataHelper.getDurationSeconds(localPath);
+      final fileSize = await VideoMetadataHelper.getFileSizeBytes(localPath);
       await _enqueue(
-        filePath: file.path,
+        filePath: localPath,
         type: UploadAssetType.videoPost,
         title: title,
         fileSize: fileSize,
-        metadata: {'videoDuration': duration, 'fileSize': fileSize},
+        metadata: {
+          'videoDuration': duration,
+          'fileSize': fileSize,
+          'originalPath': file.path,
+        },
       );
       ToastService.showSuccess('Video queued for upload');
       return true;

@@ -10,7 +10,7 @@ import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import '../widgets/upload_zone.dart';
+import 'package:edtech/global/core/widgets/upload_zone.dart';
 
 class UploadCourseScreen extends StatefulWidget {
   const UploadCourseScreen({super.key});

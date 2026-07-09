@@ -6,21 +6,21 @@ import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:edtech/global/core/widgets/app_back_button.dart';
 import 'package:edtech/global/core/widgets/auth_button.dart';
 import 'package:edtech/features/uploads/presentation/upload_queue_provider.dart';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import '../widgets/upload_zone.dart';
+import 'package:edtech/global/core/widgets/upload_zone.dart';
 
-class UploadVideoScreen extends StatefulWidget {
-  const UploadVideoScreen({super.key});
+class VideoPostUploadPage extends StatefulWidget {
+  const VideoPostUploadPage({super.key});
   static const String name = '/upload-video-page';
 
   @override
-  State<UploadVideoScreen> createState() => _UploadVideoScreenState();
+  State<VideoPostUploadPage> createState() => _VideoPostUploadPageState();
 }
 
-class _UploadVideoScreenState extends State<UploadVideoScreen> {
+class _VideoPostUploadPageState extends State<VideoPostUploadPage> {
   final TextEditingController _titleController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   final _picker = ImagePicker();
@@ -121,7 +121,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         ),
         title: Text(
           'Upload Video',
-          style: TextStyle(fontSize: 20, color: cs.onSurface),
+          style: TextStyle(fontSize: 20.sp, color: cs.onSurface),
         ),
         centerTitle: true,
       ),
@@ -130,9 +130,9 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSizes.horizontalPadding,
-                  vertical: 16,
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppSizes.horizontalPadding.w,
+                  vertical: 16.h,
                 ),
                 child: Form(
                   key: _formKey,
@@ -146,14 +146,14 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                         onTap: _isPicking ? null : _pickVideo,
                         selectedFileName: _pickedFile?.name,
                       ),
-                      const SizedBox(height: 24),
+                      SizedBox(height: 24.h),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
                             'Title',
                             style: TextStyle(
-                              fontSize: 16,
+                              fontSize: 16.sp,
                               fontWeight: FontWeight.w600,
                               color: cs.onSurface,
                             ),
@@ -161,14 +161,14 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                           Text(
                             '$_characterCount/60',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 12.sp,
                               fontWeight: FontWeight.w500,
                               color: cs.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8.h),
                       TextFormField(
                         controller: _titleController,
                         textInputAction: TextInputAction.done,
@@ -191,42 +191,42 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                         },
                         decoration: InputDecoration(
                           hintText: 'Enter your video title',
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16.w,
+                            vertical: 14.h,
                           ),
                           filled: true,
                           fillColor: isDark
                               ? cs.surfaceContainerHighest
                               : Colors.white,
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(16.r),
                             borderSide: BorderSide(
                               color: isDark
                                   ? cs.outlineVariant
                                   : AppColors.border,
-                              width: 1,
+                              width: 1.w,
                             ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(16.r),
                             borderSide: BorderSide(
                               color: AppColors.themeColor,
-                              width: 1.5,
+                              width: 1.5.w,
                             ),
                           ),
                           errorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFEF4444),
-                              width: 1.5,
+                            borderRadius: BorderRadius.circular(16.r),
+                            borderSide: BorderSide(
+                              color: const Color(0xFFEF4444),
+                              width: 1.5.w,
                             ),
                           ),
                           focusedErrorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFEF4444),
-                              width: 1.5,
+                            borderRadius: BorderRadius.circular(16.r),
+                            borderSide: BorderSide(
+                              color: const Color(0xFFEF4444),
+                              width: 1.5.w,
                             ),
                           ),
                         ),
@@ -237,12 +237,12 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              padding: EdgeInsets.fromLTRB(24.w, 0, 24.w, 16.h),
               child: AuthButton(
                 text: _pickedFile == null
                     ? 'Select a video first'
                     : 'Upload Video',
-                borderRadius: 28,
+                borderRadius: 28.r,
                 isLoading: _isUploading,
                 onPressed: (_isPicking || _isUploading) ? null : _handleUpload,
               ),
