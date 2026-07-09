@@ -60,8 +60,8 @@ typedef TaskFinal = void Function(
 /// and hands back ETags.
 class BackgroundUploadEngine {
   BackgroundUploadEngine({
-    int maxConcurrent = 3,
-    int maxConcurrentByHost = 3,
+    int maxConcurrent = 1,
+    int maxConcurrentByHost = 1,
   })  : _maxConcurrent = maxConcurrent,
         _maxConcurrentByHost = maxConcurrentByHost;
 

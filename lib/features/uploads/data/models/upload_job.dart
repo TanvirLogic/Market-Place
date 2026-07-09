@@ -97,6 +97,18 @@ class UploadJob {
   /// Last error message, if failed.
   String? error;
 
+  /// Upload speed in bytes per second (for UI display).
+  double? speedBytesPerSec;
+
+  /// Estimated remaining time in seconds (for UI display).
+  int? etaSeconds;
+
+  /// When the transfer phase started (epoch ms). Used for speed calculation.
+  int? transferStartedAt;
+
+  /// Bytes uploaded so far in the transfer phase.
+  int transferredBytes;
+
   final int createdAt;
   int updatedAt;
 
@@ -116,6 +128,10 @@ class UploadJob {
     List<UploadPart>? parts,
     Map<String, dynamic>? metadata,
     this.error,
+    this.speedBytesPerSec,
+    this.etaSeconds,
+    this.transferStartedAt,
+    this.transferredBytes = 0,
     int? createdAt,
     int? updatedAt,
   })  : parts = parts ?? <UploadPart>[],
@@ -156,6 +172,10 @@ class UploadJob {
         'parts': parts.map((p) => p.toMap()).toList(),
         'metadata': jsonEncode(metadata),
         'error': error,
+        'speedBytesPerSec': speedBytesPerSec,
+        'etaSeconds': etaSeconds,
+        'transferStartedAt': transferStartedAt,
+        'transferredBytes': transferredBytes,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
       };
@@ -189,6 +209,10 @@ class UploadJob {
           <UploadPart>[],
       metadata: meta,
       error: m['error'] as String?,
+      speedBytesPerSec: (m['speedBytesPerSec'] as num?)?.toDouble(),
+      etaSeconds: (m['etaSeconds'] as num?)?.toInt(),
+      transferStartedAt: (m['transferStartedAt'] as num?)?.toInt(),
+      transferredBytes: (m['transferredBytes'] as num?)?.toInt() ?? 0,
       createdAt: (m['createdAt'] as num?)?.toInt(),
       updatedAt: (m['updatedAt'] as num?)?.toInt(),
     );

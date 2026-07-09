@@ -28,6 +28,8 @@ data class UploadJobData(
     // Callback body template with a __FILE_URL__ placeholder for the final url
     val callbackBodyTemplate: String,
     // For multipart complete/abort we always POST to completeUrl/abortUrl
+    // Unix millis when this job was created (used for proactive URL refresh)
+    val createdAt: Long = System.currentTimeMillis(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("jobId", jobId)
@@ -42,6 +44,7 @@ data class UploadJobData(
         put("initBody", initBody)
         put("courseAssetKey", courseAssetKey ?: JSONObject.NULL)
         put("callbackBodyTemplate", callbackBodyTemplate)
+        put("createdAt", createdAt)
     }
 
     companion object {
@@ -58,6 +61,7 @@ data class UploadJobData(
             initBody = o.getString("initBody"),
             courseAssetKey = if (o.isNull("courseAssetKey")) null else o.optString("courseAssetKey"),
             callbackBodyTemplate = o.getString("callbackBodyTemplate"),
+            createdAt = o.optLong("createdAt", System.currentTimeMillis()),
         )
     }
 }
@@ -69,7 +73,7 @@ data class InitResult(
     val fileUrl: String,
     val key: String?,
     val s3UploadId: String?,
-    val parts: List<PartUrl>,
+    val parts: MutableList<PartUrl>,
 )
 
 data class PartUrl(val partNumber: Int, val uploadUrl: String)

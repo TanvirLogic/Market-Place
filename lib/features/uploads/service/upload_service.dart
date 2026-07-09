@@ -17,6 +17,18 @@ import '../engine/native_upload_bridge.dart';
 import '../engine/upload_task_factory.dart';
 import 'upload_routes.dart';
 
+/// Log a message with a tag that's visible in `adb logcat` in release mode.
+void _log(String message) {
+  // Use print() instead of AppLogger because the logger package uses
+  // debugPrint which is silenced in release builds. print() goes to
+  // stdout which Flutter's engine forwards to logcat with tag "flutter".
+  print('EduverseUpload: $message');
+}
+
+/// If a job has been queued longer than this, proactively refresh its
+/// presigned URLs before starting the upload loop to avoid 403 storms.
+const Duration _presignedRefreshAge = Duration(minutes: 30);
+
 /// Orchestrates the full S3 upload flow for every asset type:
 ///
 ///   1. init      → ask backend for presigned URL(s) (direct or multipart)
@@ -60,6 +72,19 @@ class UploadService {
   /// Polls the Android native pipeline for completed/failed results.
   Timer? _nativePollTimer;
 
+  /// Connectivity monitoring — auto-pause on disconnect, auto-resume on reconnect.
+  Timer? _connectivityTimer;
+  bool _isOnline = true;
+
+  /// Jobs explicitly paused by the user.
+  final Set<String> _pausedJobs = {};
+
+  /// Whether the entire queue is paused (e.g. due to connectivity loss).
+  bool _queuePaused = false;
+
+  /// Speed tracking: bytes uploaded tracked per second for ETA calculation.
+  final Map<String, _SpeedSample> _speedSamples = {};
+
   /// Set of job IDs recovered on restart that still have in-flight tasks.
   final Set<String> _recovering = {};
 
@@ -93,6 +118,34 @@ class UploadService {
       _recoveryAttempted = true;
       await _recoverJobs();
     }
+    _startConnectivityMonitoring();
+  }
+
+  void _startConnectivityMonitoring() {
+    if (_connectivityTimer != null) return;
+    _connectivityTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      final online = await _checkConnectivity();
+      if (online && !_isOnline) {
+        _log('CONNECTIVITY: online — resuming queue');
+        _isOnline = true;
+        _queuePaused = false;
+        _dequeue();
+      } else if (!online && _isOnline) {
+        _log('CONNECTIVITY: offline — pausing queue');
+        _isOnline = false;
+        _queuePaused = true;
+      }
+    });
+  }
+
+  Future<bool> _checkConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 5));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Scan persisted jobs and reconcile with background_downloader tasks after
@@ -101,8 +154,12 @@ class UploadService {
   /// [BackgroundUploadEngine.onTaskFinal].
   Future<void> _recoverJobs() async {
     final jobs = await _store.loadAll();
-    if (jobs.isEmpty) return;
+    if (jobs.isEmpty) {
+      _log('RECOVERY: no persisted jobs found');
+      return;
+    }
 
+    _log('RECOVERY: ${jobs.length} job(s) to recover');
     AppLogger.i('UploadService._recoverJobs: ${jobs.length} job(s) to recover');
 
     // ---- Android: the native WorkManager pipeline owns in-flight jobs ----
@@ -140,10 +197,11 @@ class UploadService {
     for (final job in jobs) {
       if (job.state.isTerminal) continue;
       if (_jobs.containsKey(job.id) && job.metadata['nativeBridge'] == true) {
-        // Already handled by the native reconciliation above.
+        _log('RECOVERY: id=${job.id} native bridge job, already reconciled above');
         continue;
       }
       _jobs[job.id] = job;
+      _log('RECOVERY: id=${job.id} state=${job.state.wire} type=${job.type.wire} title="${job.title}"');
 
       // Fetch all background_downloader task records for this job.
       final group = UploadTaskFactory.groupFor(job.id);
@@ -154,16 +212,19 @@ class UploadService {
         // terminal state save didn't persist before kill.
         if (job.state == UploadJobState.callback) {
           // Upload + complete steps already ran; just re-run idempotent callback.
+          _log('RECOVERY: id=${job.id} no tasks, state=callback — re-running callback');
           AppLogger.i('UploadService._recoverJobs: ${job.id} has no tasks but state=callback, re-running callback');
           _recoverRunCallback(job);
           continue;
         }
         if (!File(job.filePath).existsSync()) {
+          _log('RECOVERY: id=${job.id} source file missing — failing');
           AppLogger.w('UploadService._recoverJobs: ${job.id} source file missing');
           _fail(job, 'Source file not found');
           continue;
         }
         // Never got to the transfer phase — start from scratch.
+        _log('RECOVERY: id=${job.id} no tasks, re-enqueueing from scratch');
         AppLogger.i('UploadService._recoverJobs: ${job.id} has no tasks, re-enqueueing');
         _jobQueue.add(job.id);
         _dequeue();
@@ -211,12 +272,12 @@ class UploadService {
             // _onRecoveredTaskFinal (now wired in the constructor) picks up
             // completion events and drives the job forward.
             final allPendingTasks = transferRecords.length + apiRecords.length;
+            final doneCount = records.where((r) => r.status.isFinalState).length;
+            _log('RECOVERY: id=${job.id} $doneCount/$allPendingTasks tasks done, tracking for completion');
             AppLogger.i('UploadService._recoverJobs: ${job.id} has $allPendingTasks pending task(s), tracking for recovery');
             _recovering.add(job.id);
             _recoveryTotal[job.id] = allPendingTasks;
-            _recoveryDone[job.id] = records
-                .where((r) => r.status.isFinalState)
-                .length;
+            _recoveryDone[job.id] = doneCount;
             _emit(job);
           }
           continue;
@@ -478,29 +539,49 @@ class UploadService {
   }
 
   Future<void> _runCallback(UploadJob job) async {
-    try {
-      final route = _routes.forJob(job);
-      final body = jsonEncode(route.callbackBody(job));
-      final task = _factory.callbackTask(
-        job: job,
-        url: route.callbackEndpoint,
-        body: body,
-        token: AuthController.accessToken ?? '',
-        method: route.callbackMethod,
-      );
-      final result = await _engine.enqueueApiCall(task);
-      // HTTP 409 (idempotent replay) is treated as success.
-      if (!result.success && result.statusCode != 409) {
-        AppLogger.e(
-            'UploadService._runCallback ${job.id} failed: ${result.error}');
-        _setState(job, UploadJobState.failed);
-      } else {
-        _setState(job, UploadJobState.completed);
+    const maxAttempts = 5;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final body = jsonEncode(_routes.forJob(job).callbackBody(job));
+        final task = _buildCallbackTask(job, body);
+        final result = await _engine.enqueueApiCall(task);
+        if (result.success || result.statusCode == 409) {
+          AppLogger.i('UploadService._runCallback ${job.id} succeeded');
+          _setState(job, UploadJobState.completed);
+          return;
+        }
+        // On 401/403 refresh the token and retry immediately this attempt.
+        if (result.urlExpired) {
+          final fresh = _buildCallbackTask(job, body);
+          final retry = await _engine.enqueueApiCall(fresh);
+          if (retry.success || retry.statusCode == 409) {
+            AppLogger.i('UploadService._runCallback ${job.id} succeeded after token refresh');
+            _setState(job, UploadJobState.completed);
+            return;
+          }
+        }
+        AppLogger.w('UploadService._runCallback ${job.id} attempt $attempt/$maxAttempts '
+            'HTTP ${result.statusCode} ${result.error}');
+      } catch (e) {
+        AppLogger.w('UploadService._runCallback ${job.id} attempt $attempt/$maxAttempts error: $e');
       }
-    } catch (e) {
-      AppLogger.e('UploadService._runCallback error: $e');
-      _setState(job, UploadJobState.failed);
+      if (attempt < maxAttempts) {
+        await Future.delayed(Duration(seconds: attempt * 2));
+      }
     }
+    AppLogger.e('UploadService._runCallback ${job.id} exhausted $maxAttempts attempts');
+    _setState(job, UploadJobState.failed);
+  }
+
+  DataTask _buildCallbackTask(UploadJob job, String body) {
+    final route = _routes.forJob(job);
+    return _factory.callbackTask(
+      job: job,
+      url: route.callbackEndpoint,
+      body: body,
+      token: AuthController.accessToken ?? '',
+      method: route.callbackMethod,
+    );
   }
 
   /// Combined course creation flow — single init call for thumbnail + optional
@@ -805,6 +886,7 @@ class UploadService {
     );
     _jobs[id] = job;
     _jobQueue.add(id);
+    _log('enqueue: id=$id type=${type.wire} title="$title" path=$filePath size=$fileSize');
     unawaited(_store.save(job));
     _emit(job);
     _dequeue();
@@ -814,11 +896,20 @@ class UploadService {
   /// Picks the next queued job and processes it serially.
   void _dequeue() {
     if (_isProcessing) return;
+    if (_queuePaused) return;
     if (_jobQueue.isEmpty) return;
 
     _isProcessing = true;
     final nextId = _jobQueue.first;
     _jobQueue.remove(nextId);
+
+    // Skip if job was paused while queued.
+    if (_pausedJobs.contains(nextId)) {
+      _isProcessing = false;
+      _dequeue();
+      return;
+    }
+
     final job = _jobs[nextId];
     if (job == null) {
       _isProcessing = false;
@@ -839,9 +930,11 @@ class UploadService {
 
   Future<void> _process(UploadJob job) async {
     try {
+      _log('PROCESS START: id=${job.id} type=${job.type.wire} title="${job.title}" path=${job.filePath} size=${job.fileSize}');
       AppLogger.i('UploadService._process ${job.id} starting type=${job.type.wire}');
 
       if (!File(job.filePath).existsSync()) {
+        _log('PROCESS FAIL: id=${job.id} source file missing: ${job.filePath}');
         AppLogger.e('UploadService._process ${job.id} source file missing: ${job.filePath}');
         return _fail(job, 'Source file not found');
       }
@@ -851,12 +944,14 @@ class UploadService {
 
       // ---- Android: run the whole pipeline natively (survives app kill) ----
       if (NativeUploadBridge.isSupported) {
+        _log('PROCESS NATIVE BRIDGE: id=${job.id} delegating to native WorkManager');
         await _processAndroidNative(job, route);
         return;
       }
 
       // ---- Step 1: init ----
       _setState(job, UploadJobState.uploading);
+      _log('INIT REQUEST: id=${job.id} url=${route.initEndpoint} body=${jsonEncode(route.initBody)}');
       AppLogger.i('UploadService._process ${job.id} init endpoint=${route.initEndpoint} body=${route.initBody}');
       final init = await _api.init(
         endpoint: route.initEndpoint,
@@ -864,14 +959,47 @@ class UploadService {
         courseAssetKey: route.courseAssetKey,
       );
       if (init == null) {
+        _log('INIT FAILED: id=${job.id} url=${route.initEndpoint} — null response');
         AppLogger.e('UploadService._process ${job.id} init returned null');
         return _fail(job, 'Failed to initialize upload');
       }
+      _log('INIT SUCCESS: id=${job.id} isMultipart=${init.isMultipart} parts=${init.parts.length} fileUrl=${init.fileUrl} key=${init.key} s3UploadId=${init.s3UploadId}');
       _applyInit(job, init);
 
-      // ---- Step 2: transfer ----
+      // ── Proactive presigned URL refresh ──
+      // If the job was queued long ago, its S3 presigned URLs may have expired.
+      // Re-init to get fresh URLs before starting the transfer loop, avoiding
+      // a cascade of 403 mid-upload failures and individual retries.
       if (job.isMultipart) {
+        final jobAge = DateTime.now().millisecondsSinceEpoch - job.createdAt;
+        if (jobAge > _presignedRefreshAge.inMilliseconds) {
+          _log('REFRESH: id=${job.id} is ${jobAge ~/ 1000}s old — refreshing presigned URLs');
+          AppLogger.i('UploadService._process ${job.id} is ${jobAge ~/ 1000}s old — proactively refreshing presigned URLs');
+          final freshInit = await _api.init(
+            endpoint: route.initEndpoint,
+            body: route.initBody,
+            courseAssetKey: route.courseAssetKey,
+          );
+          if (freshInit != null && freshInit.isMultipart &&
+              freshInit.parts.length == job.parts.length) {
+            for (var i = 0; i < job.parts.length; i++) {
+              job.parts[i].uploadUrl = freshInit.parts[i].uploadUrl;
+            }
+            _log('REFRESH SUCCESS: id=${job.id} URLs refreshed');
+            AppLogger.i('UploadService._process ${job.id}: proactive refresh succeeded');
+          }
+        }
+      }
+
+      // ---- Step 2: transfer ----
+      job.transferStartedAt = DateTime.now().millisecondsSinceEpoch;
+      job.transferredBytes = 0;
+      if (job.isMultipart) {
+        _log('MULTIPART START: id=${job.id} parts=${job.parts.length} fileSize=${job.fileSize}');
         final results = await _engine.uploadParts(job);
+        final ok = results.where((r) => r.success).length;
+        final fail = results.where((r) => !r.success).length;
+        _log('MULTIPART DONE: id=${job.id} success=$ok failed=$fail');
         for (final r in results) {
           if (r.success && r.partNumber != null) {
             final part =
@@ -919,9 +1047,11 @@ class UploadService {
 
         final allDone = job.parts.every((p) => p.done);
         if (!allDone) {
+          _log('MULTIPART FAIL: id=${job.id} not all parts done — aborting');
           await _abort(job, route);
           return _fail(job, 'One or more parts failed to upload');
         }
+        _log('MULTIPART ALL DONE: id=${job.id}');
 
         // ---- Step 3: complete (multipart only) — native task ----
         _setState(job, UploadJobState.completing);
@@ -930,6 +1060,7 @@ class UploadService {
           'uploadId': job.s3UploadId,
           'parts': job.etagPayload,
         });
+        _log('COMPLETE REQUEST: id=${job.id} url=${route.completeEndpoint} body=$completeBody');
         var completeTask = _factory.completeTask(
           job: job,
           url: route.completeEndpoint,
@@ -939,6 +1070,7 @@ class UploadService {
         var completeResult = await _engine.enqueueApiCall(completeTask);
         // Retry once if token expired (401).
         if (!completeResult.success && completeResult.urlExpired) {
+          _log('COMPLETE RETRY: id=${job.id} 401, retrying with fresh token');
           AppLogger.w('UploadService._process ${job.id} complete 401, retrying with fresh token');
           completeTask = _factory.completeTask(
             job: job,
@@ -949,17 +1081,21 @@ class UploadService {
           completeResult = await _engine.enqueueApiCall(completeTask);
         }
         if (!completeResult.success) {
+          _log('COMPLETE FAILED: id=${job.id} error=${completeResult.error}');
           await _abort(job, route);
           return _fail(job, completeResult.error ?? 'Complete failed');
         }
+        _log('COMPLETE SUCCESS: id=${job.id} fileUrl=${completeResult.fileUrl}');
         job.fileUrl = completeResult.fileUrl;
       } else {
         // Direct upload: object is already stored at `key` on success; the
         // fileUrl came from init. No S3 complete call needed.
+        _log('DIRECT UPLOAD START: id=${job.id}');
         AppLogger.i('UploadService._process ${job.id} direct upload starting');
         var result = await _engine.uploadDirect(job);
         // Retry once if presigned URL expired.
         if (!result.success && result.urlExpired) {
+          _log('DIRECT UPLOAD RETRY: id=${job.id} URL expired, re-initing');
           AppLogger.w('UploadService._process ${job.id} URL expired, re-initing and retrying');
           final newInit = await _api.init(
             endpoint: route.initEndpoint,
@@ -973,15 +1109,18 @@ class UploadService {
           }
         }
         if (!result.success) {
+          _log('DIRECT UPLOAD FAILED: id=${job.id} error=${result.error}');
           AppLogger.e('UploadService._process ${job.id} direct upload failed: ${result.error}');
           return _fail(job, result.error ?? 'Direct upload failed');
         }
+        _log('DIRECT UPLOAD SUCCESS: id=${job.id}');
         AppLogger.i('UploadService._process ${job.id} direct upload succeeded');
       }
 
       // ---- Step 4: callback — native task ----
       _setState(job, UploadJobState.callback);
       final callbackBody = jsonEncode(route.callbackBody(job));
+      _log('CALLBACK REQUEST: id=${job.id} url=${route.callbackEndpoint} method=${route.callbackMethod} body=$callbackBody');
       AppLogger.i('UploadService._process ${job.id} callback endpoint=${route.callbackEndpoint} method=${route.callbackMethod} body=$callbackBody');
       var callbackTask = _factory.callbackTask(
         job: job,
@@ -993,6 +1132,7 @@ class UploadService {
       var callbackResult = await _engine.enqueueApiCall(callbackTask);
       // Retry once if token expired (401).
       if (!callbackResult.success && callbackResult.urlExpired) {
+        _log('CALLBACK RETRY: id=${job.id} 401, retrying with fresh token');
         AppLogger.w('UploadService._process ${job.id} callback 401, retrying with fresh token');
         callbackTask = _factory.callbackTask(
           job: job,
@@ -1005,12 +1145,16 @@ class UploadService {
       }
       // HTTP 409 (idempotent replay) is treated as success.
       if (!callbackResult.success && callbackResult.statusCode != 409) {
+        _log('CALLBACK FAILED: id=${job.id} statusCode=${callbackResult.statusCode} error=${callbackResult.error}');
         AppLogger.e('UploadService._process ${job.id} callback failed: ${callbackResult.error}');
         return _fail(job, callbackResult.error ?? 'Server callback failed');
       }
+      _log('CALLBACK SUCCESS: id=${job.id} statusCode=${callbackResult.statusCode}');
 
       _setState(job, UploadJobState.completed);
+      _log('PROCESS COMPLETE: id=${job.id} fileUrl=${job.fileUrl}');
     } catch (e, st) {
+      _log('PROCESS ERROR: id=${job.id} error=$e');
       AppLogger.e('UploadService._process ${job.id} error: $e\n$st');
       _fail(job, e.toString());
     }
@@ -1021,6 +1165,7 @@ class UploadService {
   /// killed. We build the callback body with a `__FILE_URL__` placeholder that
   /// the worker fills in once it knows the final S3 url.
   Future<void> _processAndroidNative(UploadJob job, UploadRoute route) async {
+    _log('NATIVE BRIDGE: id=${job.id} initUrl=${route.initEndpoint} completeUrl=${route.completeEndpoint} callbackUrl=${route.callbackEndpoint} method=${route.callbackMethod}');
     // Keep native auth in sync so the worker can call our backend (and refresh
     // the token itself) with no Dart isolate alive.
     await NativeUploadBridge.syncTokens(
@@ -1055,13 +1200,16 @@ class UploadService {
       'initBody': jsonEncode(route.initBody),
       'courseAssetKey': route.courseAssetKey,
       'callbackBodyTemplate': jsonEncode(callbackMap),
+      'createdAt': job.createdAt,
     };
 
     final started = await NativeUploadBridge.enqueueUpload(jobData);
     if (!started) {
+      _log('NATIVE BRIDGE ENQUEUE FAILED: id=${job.id}');
       return _fail(job, 'Failed to start native upload');
     }
 
+    _log('NATIVE BRIDGE ENQUEUED: id=${job.id} — pipeline runs in WorkManager');
     job.metadata['nativeBridge'] = true;
     _setState(job, UploadJobState.uploading);
     unawaited(_store.save(job));
@@ -1070,7 +1218,9 @@ class UploadService {
 
   /// Periodically poll the native pipeline for terminal results and reconcile.
   void _startNativePolling() {
-    _nativePollTimer ??= Timer.periodic(
+    if (_nativePollTimer != null) return;
+    _log('NATIVE POLLING STARTED: polling every 3s');
+    _nativePollTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) => _pollNativeResults(),
     );
@@ -1079,16 +1229,32 @@ class UploadService {
   Future<void> _pollNativeResults() async {
     if (!NativeUploadBridge.isSupported) return;
     final results = await NativeUploadBridge.getCompletedJobs();
+    if (results.isNotEmpty) {
+      _log('NATIVE POLL: ${results.length} result(s) from native pipeline');
+    }
     for (final r in results) {
       final jobId = r['jobId'] as String?;
       if (jobId == null) continue;
       final job = _jobs[jobId];
       if (job == null) {
-        // Result for a job we no longer track — clear it so it doesn't pile up.
         unawaited(NativeUploadBridge.clearResult(jobId));
         continue;
       }
       _reconcileNativeResult(job, r);
+    }
+
+    // Pull real-time progress for active native jobs.
+    for (final job in _jobs.values) {
+      if (job.metadata['nativeBridge'] != true) continue;
+      if (job.state.isTerminal) continue;
+      final pct = await NativeUploadBridge.getProgress(job.id);
+      if (pct != null) {
+        // Native progress is 0-100; map to 0.0-0.95 (reserve 5% for complete+callback).
+        job.progress = (pct / 100.0 * 0.95).clamp(0.0, 0.95);
+        job.touch();
+        _emit(job);
+        _log('NATIVE PROGRESS: id=${job.id} ${job.state.wire} nativePct=$pct mappedProgress=${(job.progress * 100).toStringAsFixed(0)}%');
+      }
     }
 
     // Stop polling once no native jobs remain in flight.
@@ -1096,6 +1262,7 @@ class UploadService {
       (j) => j.metadata['nativeBridge'] == true && !j.state.isTerminal,
     );
     if (!hasNative) {
+      _log('NATIVE POLLING STOPPED: no pending native jobs');
       _nativePollTimer?.cancel();
       _nativePollTimer = null;
     }
@@ -1106,12 +1273,23 @@ class UploadService {
     final fileUrl = result['fileUrl'] as String?;
     final error = result['error'] as String?;
 
+    _log('NATIVE RESULT: id=${job.id} status=$status fileUrl=$fileUrl error=$error');
     if (status == 'completed') {
       if (fileUrl != null && fileUrl.isNotEmpty) job.fileUrl = fileUrl;
       _setState(job, UploadJobState.completed);
       unawaited(NativeUploadBridge.clearResult(job.id));
+    } else if (fileUrl != null && fileUrl.isNotEmpty) {
+      // S3 upload succeeded (bytes on S3) but the native callback (step 4)
+      // failed. Retry the callback from Dart since it's idempotent (409-safe).
+      _log('NATIVE CALLBACK RETRY: id=${job.id} S3 bytes uploaded, retrying callback from Dart');
+      unawaited(NativeUploadBridge.clearResult(job.id));
+      job.fileUrl = fileUrl;
+      job.progress = 0.99;
+      _setState(job, UploadJobState.callback);
+      unawaited(_runCallback(job));
     } else {
-      // 'failed' — the native worker exhausted its retries.
+      // Genuine failure — nothing on S3.
+      _log('NATIVE FAILED: id=${job.id} error=$error');
       unawaited(NativeUploadBridge.clearResult(job.id));
       _fail(job, error ?? 'Native upload failed');
     }
@@ -1125,11 +1303,10 @@ class UploadService {
 
     if (init.isMultipart) {
       job.parts.clear();
+      // Fixed 5 MB part size as specified by the backend.
       const partSize = 5 * 1024 * 1024;
       final serverTotal = init.parts.length;
-      final needed = serverTotal > 0
-          ? (job.fileSize + partSize - 1) ~/ partSize
-          : 0;
+      final needed = (job.fileSize + partSize - 1) ~/ partSize;
       final total = needed < serverTotal ? needed : serverTotal;
       for (var i = 0; i < total; i++) {
         final p = init.parts[i];
@@ -1168,6 +1345,7 @@ class UploadService {
   Future<void> retry(String id) async {
     final job = _jobs[id];
     if (job == null || !job.state.isTerminal) return;
+    _pausedJobs.remove(id);
     job.error = null;
     job.progress = 0.0;
     job.key = null;
@@ -1177,6 +1355,10 @@ class UploadService {
     job.isMultipart = false;
     job.parts.clear();
     job.metadata.remove('nativeBridge');
+    job.speedBytesPerSec = null;
+    job.etaSeconds = null;
+    job.transferStartedAt = null;
+    job.transferredBytes = 0;
     _setState(job, UploadJobState.pending);
     _jobQueue.add(id);
     _dequeue();
@@ -1194,16 +1376,37 @@ class UploadService {
 
   Future<void> remove(String id) async {
     final job = _jobs[id];
-    if (job != null) _hardRemove(job);
-    await _store.delete(id);
+    if (job != null) {
+      await _hardRemove(job);
+    } else {
+      await _store.delete(id);
+    }
   }
 
   void _onEngineProgress(String jobId, double progress) {
     final job = _jobs[jobId];
     if (job == null) return;
-    // Reserve the last 5% for complete+callback so the bar doesn't sit at 100%
-    // while finalizing.
     job.progress = job.isMultipart ? progress * 0.95 : progress;
+    job.transferredBytes = (progress * job.fileSize).round();
+
+    // Speed & ETA calculation.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final sample = _speedSamples.putIfAbsent(jobId, () => _SpeedSample(now: now, bytes: job.transferredBytes));
+    final elapsed = now - sample.now;
+    if (elapsed >= 2000) {
+      final bytesDelta = job.transferredBytes - sample.bytes;
+      final secDelta = elapsed / 1000.0;
+      if (bytesDelta > 0 && secDelta > 0) {
+        job.speedBytesPerSec = (bytesDelta / secDelta).roundToDouble();
+        if (job.speedBytesPerSec! > 0) {
+          final remaining = job.fileSize - job.transferredBytes;
+          job.etaSeconds = (remaining / job.speedBytesPerSec!).round();
+        }
+      }
+      sample.now = now;
+      sample.bytes = job.transferredBytes;
+    }
+
     job.touch();
     _emit(job);
   }
@@ -1211,6 +1414,7 @@ class UploadService {
   void _setState(UploadJob job, UploadJobState state) {
     // Prevent overwriting a terminal state (e.g. cancel vs fail race).
     if (job.state.isTerminal && state != UploadJobState.pending) return;
+    _log('STATE: id=${job.id} ${job.state.wire} -> ${state.wire}');
     job.state = state;
     if (state == UploadJobState.completed) {
       job.progress = 1.0;
@@ -1220,13 +1424,7 @@ class UploadService {
       job.progress = 0.95;
     }
     job.touch();
-    if (state == UploadJobState.failed) {
-      // Erase failed jobs entirely — user does not want to see or retry them.
-      unawaited(_store.delete(job.id));
-      _jobs.remove(job.id);
-    } else {
-      unawaited(_store.save(job));
-    }
+    unawaited(_store.save(job));
     if (state.isTerminal) {
       unawaited(_cleanupJob(job));
     }
@@ -1236,15 +1434,17 @@ class UploadService {
   void _fail(UploadJob job, String message) {
     job.error = message;
     _setState(job, UploadJobState.failed);
-    // Remove from everywhere on the Flutter side — no lingering state.
-    _hardRemove(job);
+    // Keep job in _jobs so the UI can show it and the user can retry.
+    unawaited(_store.save(job));
   }
 
-  void _hardRemove(UploadJob job) {
+  /// Permanently remove a job from memory and storage (used by explicit
+  /// user command via [remove]).
+  Future<void> _hardRemove(UploadJob job) async {
     _jobQueue.remove(job.id);
     _jobs.remove(job.id);
-    unawaited(_store.delete(job.id));
-    unawaited(_cleanupJob(job));
+    await _store.delete(job.id);
+    await _cleanupJob(job);
   }
 
   UploadJob _failJob(UploadJob job, String message) {
@@ -1328,12 +1528,122 @@ class UploadService {
     }
   }
 
+  // ── Pause / Resume ─────────────────────────────────────────────────────
+
+  /// Pause a single active job. It will be skipped when dequeue picks it up.
+  Future<void> pause(String id) async {
+    final job = _jobs[id];
+    if (job == null || job.state.isTerminal || _pausedJobs.contains(id)) return;
+    _pausedJobs.add(id);
+    // If currently processing, cancel the engine tasks so they stop.
+    if (job.state == UploadJobState.uploading ||
+        job.state == UploadJobState.completing ||
+        job.state == UploadJobState.callback) {
+      await _engine.cancelJob(id);
+    }
+    _setState(job, UploadJobState.paused);
+  }
+
+  /// Resume a paused job — re-enqueue it for processing.
+  Future<void> resume(String id) async {
+    final job = _jobs[id];
+    if (job == null || job.state != UploadJobState.paused) return;
+    _pausedJobs.remove(id);
+    _setState(job, UploadJobState.pending);
+    _jobQueue.add(id);
+    _dequeue();
+  }
+
+  /// Pause all active uploads.
+  Future<void> pauseAll() async {
+    _queuePaused = true;
+    final ids = _jobs.values
+        .where((j) => j.state.isActive && !j.state.isTerminal)
+        .map((j) => j.id)
+        .toList();
+    for (final id in ids) {
+      await pause(id);
+    }
+    _log('PAUSE ALL: ${ids.length} job(s) paused');
+  }
+
+  /// Resume all paused uploads.
+  Future<void> resumeAll() async {
+    _queuePaused = false;
+    final ids = _jobs.values
+        .where((j) => j.state == UploadJobState.paused)
+        .map((j) => j.id)
+        .toList();
+    for (final id in ids) {
+      await resume(id);
+    }
+    _log('RESUME ALL: ${ids.length} job(s) resumed');
+  }
+
+  // ── Batch operations ───────────────────────────────────────────────────
+
+  /// Retry all failed uploads. Returns the count retried.
+  Future<int> retryAllFailed() async {
+    final failed = _jobs.values
+        .where((j) => j.state == UploadJobState.failed)
+        .map((j) => j.id)
+        .toList();
+    for (final id in failed) {
+      // Re-add to store and re-enqueue.
+      final job = _jobs[id];
+      if (job != null) {
+        job.error = null;
+        job.progress = 0.0;
+        job.key = null;
+        job.s3UploadId = null;
+        job.fileUrl = null;
+        job.directUploadUrl = null;
+        job.isMultipart = false;
+        job.parts.clear();
+        job.metadata.remove('nativeBridge');
+        _setState(job, UploadJobState.pending);
+        _jobQueue.add(id);
+        unawaited(_store.save(job));
+      }
+    }
+    _dequeue();
+    _log('RETRY ALL FAILED: ${failed.length} job(s)');
+    return failed.length;
+  }
+
+  /// Cancel all active (non-terminal) uploads.
+  Future<void> cancelAllActive() async {
+    final ids = _jobs.values
+        .where((j) => !j.state.isTerminal)
+        .map((j) => j.id)
+        .toList();
+    for (final id in ids) {
+      _jobQueue.remove(id);
+      final job = _jobs[id];
+      if (job != null) {
+        await _engine.cancelJob(id);
+        final route = _routes.forJob(job);
+        await _abort(job, route);
+        _setState(job, UploadJobState.cancelled);
+      }
+    }
+    _log('CANCEL ALL: ${ids.length} job(s) cancelled');
+  }
+
   Future<void> dispose() async {
     _nativePollTimer?.cancel();
+    _connectivityTimer?.cancel();
     await _engine.dispose();
     await _controller.close();
     await _store.close();
   }
+}
+
+/// A snapshot of bytes-transferred-at-timestamp used for speed computation.
+class _SpeedSample {
+  int now;
+  int bytes;
+  _SpeedSample({required this.now, required this.bytes});
 }
 
 /// Buffered completion from a native background task that fired before

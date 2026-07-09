@@ -89,6 +89,11 @@ class MainActivity : FlutterActivity() {
                         if (jobId != null) store.clearResult(jobId)
                         result.success(true)
                     }
+                    "getProgress" -> {
+                        val jobId = call.argument<String>("jobId")
+                        val pct = if (jobId != null) store.loadProgress(jobId) else null
+                        result.success(pct)
+                    }
                     "cancelAll" -> {
                         UploadManager.cancelAll(applicationContext)
                         result.success(true)
