@@ -24,6 +24,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+
 class App extends StatelessWidget {
   static GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   final SharedPreferences prefs;
@@ -56,25 +58,30 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => VideoPlayerProvider()),
       ],
       child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) => MaterialApp(
-          title: 'Eduverse',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: themeProvider.currentThemeMode,
-          navigatorKey: App.navigatorKey,
-          onGenerateRoute: AppRoutes.onGenerateRoute,
-          initialRoute: AppRoutes.splash,
-          navigatorObservers: [routeObserver],
-          builder: (context, child) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              final overlay = App.navigatorKey.currentState?.overlay;
-              if (overlay != null) {
-                ToastService.initOverlay(overlay);
-              }
-            });
-            return child!;
-          },
+        builder: (context, themeProvider, _) => ScreenUtilInit(
+          designSize: const Size(375, 812),
+          minTextAdapt: true,
+          splitScreenMode: true,
+          builder: (context, child) => MaterialApp(
+            title: 'Eduverse',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.currentThemeMode,
+            navigatorKey: App.navigatorKey,
+            onGenerateRoute: AppRoutes.onGenerateRoute,
+            initialRoute: AppRoutes.splash,
+            navigatorObservers: [routeObserver],
+            builder: (context, child) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                final overlay = App.navigatorKey.currentState?.overlay;
+                if (overlay != null) {
+                  ToastService.initOverlay(overlay);
+                }
+              });
+              return child!;
+            },
+          ),
         ),
       ),
     );

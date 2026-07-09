@@ -4,27 +4,14 @@ import 'package:edtech/global/core/models/network_response.dart';
 
 import '../models/course_init_result.dart';
 import '../models/s3_init_response.dart';
-
-/// Result of a complete-multipart call.
 class CompleteResult {
   final bool isSuccess;
   final String? fileUrl;
   final String? errorMessage;
   const CompleteResult({required this.isSuccess, this.fileUrl, this.errorMessage});
 }
-
-/// Thin HTTP client for the four S3 upload control-plane calls:
-/// init, complete, abort, callback. The actual byte transfer (step 2) is done
-/// by the background_downloader engine, not here.
-///
-/// All calls go through [getNetworkCaller], so bearer auth and 401 token
-/// refresh are handled by the existing network layer.
 class S3UploadApi {
   const S3UploadApi();
-
-  /// Step 1 — initiate the upload. [endpoint] and [body] vary per asset type
-  /// (built by the caller). [courseAssetKey] selects the nested course section
-  /// ('thumbnail' | 'video') when the course endpoint returns both.
   Future<S3InitResponse?> init({
     required String endpoint,
     required Map<String, dynamic> body,
@@ -40,8 +27,6 @@ class S3UploadApi {
     );
   }
 
-  /// Combined init for course creation — sends thumbnail and optional video
-  /// fields in one request and returns both presigned URL sets.
   Future<CourseInitResult?> initCourseAssets({
     required Map<String, dynamic> body,
   }) async {
@@ -49,15 +34,15 @@ class S3UploadApi {
       url: Urls.courseAssetsUploadUrl,
       body: body,
     );
-    if (!res.isSuccess) return null;
+    if (!res.isSuccess) {
+      print('initCourseAssets failed: ${res.responseCode} ${res.errorMessage}');
+      return null;
+    }
     final data = res.responseData;
     if (data is! Map) return null;
     return CourseInitResult.fromEnvelope(Map<String, dynamic>.from(data));
   }
 
-  /// Step 3 — complete a multipart upload. Sends `{key, uploadId, parts}` and
-  /// returns the final fileUrl. [parts] is `[{partNumber, eTag}]` with ETags
-  /// preserved verbatim (quotes included).
   Future<CompleteResult> complete({
     required String endpoint,
     required String key,
@@ -103,10 +88,6 @@ class S3UploadApi {
     return res.isSuccess;
   }
 
-  /// Step 4 — notify our backend the asset is ready. [body] is per-type.
-  /// [method] is `POST` (video/course/lesson/resource) or `PUT` (avatar/cover
-  /// confirm). Sends a real `Idempotency-Key` header and treats HTTP 409
-  /// (already-registered / idempotent replay) as success.
   Future<bool> callback({
     required String endpoint,
     required Map<String, dynamic> body,

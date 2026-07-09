@@ -11,7 +11,7 @@ import 'package:edtech/features/home/presentation/pages/main_nav_shell.dart';
 import 'package:edtech/features/course_details/presentation/screens/course_details_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/payment_success_screen.dart';
 import 'package:edtech/features/courses/presentation/screens/upload_course_screen.dart';
-import 'package:edtech/features/courses/presentation/screens/upload_video_screen.dart';
+import 'package:edtech/features/video_post/ui/pages/video_post_upload_page.dart';
 import 'package:edtech/features/manage_module/presentation/screens/manage_module_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/password_and_security_screen.dart';
 import 'package:edtech/features/hub/presentation/screens/payments_and_revenue_screen.dart';
@@ -92,7 +92,7 @@ class AppRoutes {
       case editProfilePage:
         return MaterialPageRoute(builder: (_) => const EditProfileScreen());
       case uploadVideoPage:
-        return MaterialPageRoute(builder: (_) => const UploadVideoScreen());
+        return MaterialPageRoute(builder: (_) => const VideoPostUploadPage());
       case uploadCoursePage:
         return MaterialPageRoute(builder: (_) => const UploadCourseScreen());
       case courseDetails:

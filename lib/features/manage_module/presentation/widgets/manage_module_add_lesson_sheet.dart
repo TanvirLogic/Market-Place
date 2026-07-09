@@ -1,4 +1,4 @@
-import 'package:edtech/features/courses/presentation/widgets/upload_zone.dart';
+import 'package:edtech/global/core/widgets/upload_zone.dart';
 import 'package:edtech/features/manage_module/data/manage_module_models.dart';
 import 'package:edtech/global/core/services/toast_service.dart';
 import 'package:file_picker/file_picker.dart';
