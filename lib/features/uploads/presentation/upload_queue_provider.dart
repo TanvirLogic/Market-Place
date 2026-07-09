@@ -77,9 +77,6 @@ class UploadTaskView {
   });
 }
 
-/// Drop-in replacement for the previous `UnifiedUploadQueueProvider`, backed by
-/// the new `background_downloader`-based [UploadService]. Exposes the same
-/// public API the app already calls.
 class UploadQueueProvider extends ChangeNotifier {
   UploadQueueProvider({UploadService? service})
       : _service = service ?? UploadService() {
@@ -393,6 +390,7 @@ class UploadQueueProvider extends ChangeNotifier {
     required String level,
     required String type,
     required double price,
+    void Function(double)? onProgress,
   }) async {
     if (_adding) return 0;
     if (!File(thumbnailPath).existsSync()) {
@@ -405,17 +403,57 @@ class UploadQueueProvider extends ChangeNotifier {
         ToastService.showError('Notification permission required to upload');
         return 0;
       }
+      
+      final localThumb = await _copyToAppCache(thumbnailPath);
+      if (localThumb == null) {
+        ToastService.showError('Failed to access thumbnail');
+        return 0;
+      }
+      String? localVideo;
+      if (videoPath != null) {
+        localVideo = await _copyToAppCache(videoPath);
+        if (localVideo == null) {
+          ToastService.showError('Failed to access video');
+          return 0;
+        }
+      }
+
       final intId = _nextIntId++;
       final jobId = 'course_${DateTime.now().millisecondsSinceEpoch}_$intId';
-      final thumbSize = await File(thumbnailPath).length();
-      final videoSize = videoPath != null
-          ? await File(videoPath).length()
+      
+      final thumbJobId = '${jobId}_thumb';
+      final videoJobId = '${jobId}_video';
+      
+      _intToJob[intId] = thumbJobId;
+      _jobToInt[thumbJobId] = intId;
+      _jobToInt[videoJobId] = intId;
+
+      void listener() {
+        final jobIds = [thumbJobId, videoJobId];
+        double totalProgress = 0.0;
+        int activeJobs = 0;
+        for (final id in jobIds) {
+          final job = _service.jobs.firstWhere((j) => j.id == id, orElse: () => UploadJob(id: '', filePath: '', type: UploadAssetType.courseThumb, title: '', fileSize: 0));
+          if (job.id.isNotEmpty) {
+            activeJobs++;
+            totalProgress += job.progress;
+          }
+        }
+        if (activeJobs > 0 && onProgress != null) {
+          onProgress(totalProgress / activeJobs);
+        }
+      }
+      addListener(listener);
+
+      final thumbSize = await File(localThumb).length();
+      final videoSize = localVideo != null
+          ? await File(localVideo).length()
           : null;
 
       final job = await _service.createCourse(
         id: jobId,
-        thumbnailPath: thumbnailPath,
-        videoPath: videoPath,
+        thumbnailPath: localThumb,
+        videoPath: localVideo,
         thumbnailFileSize: thumbSize,
         videoFileSize: videoSize,
         title: title,
@@ -428,9 +466,7 @@ class UploadQueueProvider extends ChangeNotifier {
         price: price,
       );
 
-      // Register both thumb and video sub-job ids for notification tracking.
-      _intToJob[intId] = job.id;
-      _jobToInt[job.id] = intId;
+      removeListener(listener);
 
       if (job.state == UploadJobState.completed) {
         ToastService.showSuccess('Course created successfully!');

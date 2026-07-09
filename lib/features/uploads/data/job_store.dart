@@ -1,16 +1,9 @@
 import 'dart:convert';
-
-import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-
 import 'models/upload_enums.dart';
 import 'models/upload_job.dart';
 
-/// Persists [UploadJob] state transitions to SQLite so jobs survive app kill.
-///
-/// Table schema mirrors [UploadJob] fields. Only non-terminal jobs are kept
-/// after a restart; terminal jobs are cleaned up lazily.
 class JobStore {
   Database? _db;
 
@@ -18,7 +11,7 @@ class JobStore {
     if (_db != null) return _db!;
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
-      join(dir.path, 'upload_jobs.db'),
+      '${dir.path}/upload_jobs.db',
       version: 1,
       onCreate: (db, _) async {
         await db.execute('''
