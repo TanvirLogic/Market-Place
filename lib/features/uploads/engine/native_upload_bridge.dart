@@ -17,7 +17,7 @@ class NativeUploadBridge {
   static const _channel = MethodChannel('eduverse/native_upload');
 
   /// Whether the current platform uses the native upload pipeline.
-  static bool get isSupported => Platform.isAndroid;
+  static bool get isSupported => Platform.isAndroid || Platform.isIOS;
 
   /// Mirror the current access/refresh tokens into native storage so the worker
   /// can authenticate (and refresh) without the Dart isolate being alive.
@@ -73,6 +73,17 @@ class NativeUploadBridge {
     try {
       await _channel.invokeMethod('clearResult', {'jobId': jobId});
     } catch (_) {}
+  }
+
+  /// Get current progress for an active job (0-100, or null if unknown/terminal).
+  static Future<int?> getProgress(String jobId) async {
+    if (!isSupported) return null;
+    try {
+      final pct = await _channel.invokeMethod<int>('getProgress', {'jobId': jobId});
+      return pct;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Cancel the entire native upload queue.

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:edtech/app/app.dart';
@@ -11,6 +12,10 @@ import 'package:flutter/material.dart';
 import '../data/models/upload_enums.dart';
 import '../data/models/upload_job.dart';
 import '../service/upload_service.dart';
+
+void _ulog(String message) {
+  print('EduverseUpload: $message');
+}
 
 /// UI-facing state names, kept compatible with the previous `UploadState` enum
 /// (`pending`, `uploading`, `completed`, `failed`, `cancelled`) so existing
@@ -30,6 +35,8 @@ enum UploadState {
       case UploadJobState.completing:
       case UploadJobState.callback:
         return UploadState.uploading;
+      case UploadJobState.paused:
+        return UploadState.pending;
       case UploadJobState.completed:
         return UploadState.completed;
       case UploadJobState.failed:
@@ -50,6 +57,10 @@ class UploadTaskView {
   final String filePath;
   final String? fileUrl;
   final Map<String, dynamic>? metadata;
+  final double? speedBytesPerSec;
+  final int? etaSeconds;
+  final String? error;
+  final bool isPaused;
 
   const UploadTaskView({
     required this.id,
@@ -59,6 +70,10 @@ class UploadTaskView {
     required this.filePath,
     required this.fileUrl,
     required this.metadata,
+    this.speedBytesPerSec,
+    this.etaSeconds,
+    this.error,
+    this.isPaused = false,
   });
 }
 
@@ -89,11 +104,6 @@ class UploadQueueProvider extends ChangeNotifier {
       _intToJob[intId] = job.id;
       _jobToInt[job.id] = intId;
     }
-    // Note: upload notifications are shown natively by background_downloader
-    // (configured in BackgroundUploadEngine) so the progress notification
-    // survives app kill. We intentionally do NOT show Dart-side notifications
-    // here — doing so produced duplicate entries in the system tray.
-    // Service auto-removes failed jobs from everywhere; keep our mappings in sync.
     if (job.state == UploadJobState.failed) {
       final intId = _jobToInt.remove(job.id);
       if (intId != null) _intToJob.remove(intId);
@@ -184,10 +194,12 @@ class UploadQueueProvider extends ChangeNotifier {
   }) async {
     if (_adding) return 0;
     if (!File(videoPath).existsSync()) {
+      _ulog('QUEUE FAIL: moduleId=$moduleId file not found: $videoPath');
       ToastService.showError('Video file not found');
       return 0;
     }
     if (_hasInFlightFile(videoPath, type: UploadAssetType.moduleLesson)) {
+      _ulog('QUEUE FAIL: moduleId=$moduleId duplicate: $videoPath');
       ToastService.showError('This video is already in the upload queue');
       return 0;
     }
@@ -201,11 +213,13 @@ class UploadQueueProvider extends ChangeNotifier {
       // even when the original path is a content:// URI from image_picker.
       final localPath = await _copyToAppCache(videoPath);
       if (localPath == null) {
+        _ulog('QUEUE FAIL: moduleId=$moduleId could not copy to cache');
         ToastService.showError('Failed to access video file');
         return 0;
       }
       final fileSize = await File(localPath).length();
       final duration = await VideoMetadataHelper.getDurationSeconds(localPath);
+      _ulog('QUEUE: moduleId=$moduleId courseId=$courseId title="$lessonTitle" path=$localPath size=$fileSize duration=$duration lessonId=$lessonId');
       final job = await _enqueue(
         filePath: localPath,
         type: UploadAssetType.moduleLesson,
@@ -224,6 +238,7 @@ class UploadQueueProvider extends ChangeNotifier {
       ToastService.showSuccess('Your video is being uploaded');
       return _jobToInt[job.id]!;
     } catch (e) {
+      _ulog('QUEUE ERROR: moduleId=$moduleId error=$e');
       AppLogger.e('addModuleLessonToQueue error: $e');
       ToastService.showError('Failed to queue video lesson');
       return 0;
@@ -456,11 +471,39 @@ class UploadQueueProvider extends ChangeNotifier {
   }
 
   Future<void> pauseQueue() async {
-    ToastService.showInfo('Resource management handled by system notifications');
+    await _service.pauseAll();
+    ToastService.showInfo('Upload queue paused');
   }
 
   Future<void> resumeQueue() async {
-    ToastService.showInfo('Upload assets resumed');
+    await _service.resumeAll();
+    ToastService.showInfo('Upload queue resumed');
+  }
+
+  Future<void> pauseTask(int queueId) async {
+    final jobId = _intToJob[queueId];
+    if (jobId != null) await _service.pause(jobId);
+    ToastService.showInfo('Upload paused');
+  }
+
+  Future<void> resumeTask(int queueId) async {
+    final jobId = _intToJob[queueId];
+    if (jobId != null) await _service.resume(jobId);
+    ToastService.showInfo('Upload resumed');
+  }
+
+  Future<void> retryAllFailed() async {
+    final count = await _service.retryAllFailed();
+    if (count > 0) {
+      ToastService.showInfo('Retrying $count failed upload(s)');
+    } else {
+      ToastService.showInfo('No failed uploads to retry');
+    }
+  }
+
+  Future<void> cancelAllActive() async {
+    await _service.cancelAllActive();
+    ToastService.showInfo('All active uploads cancelled');
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
@@ -494,6 +537,10 @@ class UploadQueueProvider extends ChangeNotifier {
         filePath: j.filePath,
         fileUrl: j.fileUrl,
         metadata: j.metadata,
+        speedBytesPerSec: j.speedBytesPerSec,
+        etaSeconds: j.etaSeconds,
+        error: j.error,
+        isPaused: j.state == UploadJobState.paused,
       );
 
   bool _hasInFlightFile(String filePath, {UploadAssetType? type}) {

@@ -33,6 +33,7 @@ enum UploadJobState {
   uploading('uploading'),
   completing('completing'),
   callback('callback'),
+  paused('paused'),
   completed('completed'),
   failed('failed'),
   cancelled('cancelled');
@@ -45,7 +46,7 @@ enum UploadJobState {
       this == completed || this == failed || this == cancelled;
 
   bool get isActive => this == pending || this == uploading ||
-      this == completing || this == callback;
+      this == completing || this == callback || this == paused;
 
   static UploadJobState fromWire(String? value) {
     for (final s in UploadJobState.values) {

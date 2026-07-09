@@ -51,4 +51,26 @@ class UploadStore(context: Context) {
     fun clearResult(jobId: String) {
         File(resultsDir, "$jobId.json").delete()
     }
+
+    // MARK: - Progress tracking (read by Dart poll cycle for real-time UI)
+
+    private val progressDir = File(context.filesDir, "eduverse_upload/progress").apply { mkdirs() }
+
+    fun saveProgress(jobId: String, pct: Int) {
+        try {
+            File(progressDir, "$jobId.json").writeText("{\"progress\":$pct}")
+        } catch (_: Exception) {}
+    }
+
+    fun loadProgress(jobId: String): Int? {
+        val f = File(progressDir, "$jobId.json")
+        if (!f.exists()) return null
+        return try {
+            JSONObject(f.readText()).optInt("progress", -1).let { if (it < 0) null else it }
+        } catch (_: Exception) { null }
+    }
+
+    fun deleteProgress(jobId: String) {
+        try { File(progressDir, "$jobId.json").delete() } catch (_: Exception) {}
+    }
 }
